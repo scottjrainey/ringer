@@ -26,9 +26,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-TOOL_NAME = "swarm"
-STATE_DIR_NAME = ".swarm"
-ENV_VAR_PREFIX = "SWARM"
+TOOL_NAME = "ringer"
+STATE_DIR_NAME = ".ringer"
+ENV_VAR_PREFIX = "RINGER"
 
 CONFIG_DIR_NAME = TOOL_NAME
 CONFIG_FILE_NAME = "config.toml"
@@ -42,7 +42,7 @@ VERIFY_METHOD = "executed-check"
 DASHBOARD_HTML_PATH = Path(__file__).resolve().parent / "dashboard" / "dashboard.html"
 MINIMAL_DASHBOARD_HTML = """<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>swarm dashboard</title></head>
+<head><meta charset="utf-8"><title>ringer dashboard</title></head>
 <body style="font-family: system-ui, sans-serif; background:#080a0f; color:#eef4ff;">
 <main id="app">dashboard/dashboard.html is missing</main>
 <script>
@@ -504,7 +504,7 @@ class StateWriter:
         with contextlib.suppress(FileNotFoundError):
             self.path.unlink()
         self.flush()
-        self._thread = threading.Thread(target=self._loop, name="swarm-state-writer", daemon=True)
+        self._thread = threading.Thread(target=self._loop, name="ringer-state-writer", daemon=True)
         self._thread.start()
 
     def set_port(self, port: int | None) -> None:
@@ -631,7 +631,7 @@ class Dashboard:
                     try:
                         body = state_path.read_bytes()
                     except FileNotFoundError:
-                        body = b'{"run_name":"swarm","identity":"unknown","started_at":"","tasks":[],"totals":{"running":0,"done":0,"pass":0,"fail":0,"tokens":0}}'
+                        body = b'{"run_name":"ringer","identity":"unknown","started_at":"","tasks":[],"totals":{"running":0,"done":0,"pass":0,"fail":0,"tokens":0}}'
                     self.send_response(HTTPStatus.OK)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.send_header("Cache-Control", "no-store")
@@ -655,7 +655,7 @@ class Dashboard:
             break
         if self.httpd is None or self.port is None:
             raise RuntimeError(f"could not start dashboard: {last_error}")
-        self.thread = threading.Thread(target=self.httpd.serve_forever, name="swarm-dashboard", daemon=True)
+        self.thread = threading.Thread(target=self.httpd.serve_forever, name="ringer-dashboard", daemon=True)
         self.thread.start()
         url = f"http://localhost:{self.port}"
         try:
@@ -813,11 +813,11 @@ class Verifier:
                 stdout, _ = await proc.communicate()
         output = stdout.decode("utf-8", errors="replace") if stdout else ""
         if timed_out:
-            output += f"\n[swarm.py] check timed out after {CHECK_TIMEOUT_S}s\n"
+            output += f"\n[ringer.py] check timed out after {CHECK_TIMEOUT_S}s\n"
         return proc.returncode, timed_out, output
 
 
-class SwarmRunner:
+class RingerRunner:
     def __init__(
         self,
         manifest: Manifest,
@@ -975,7 +975,7 @@ class SwarmRunner:
             stdout, _ = await proc.communicate()
             if proc.returncode != 0:
                 message = stdout.decode("utf-8", errors="replace")
-                append_text(taskdir / "worker.log", f"[swarm.py] git worktree add failed:\n{message}\n")
+                append_text(taskdir / "worker.log", f"[ringer.py] git worktree add failed:\n{message}\n")
                 return False, message.strip() or "git worktree add failed"
             return True, None
         taskdir.mkdir(parents=True, exist_ok=True)
@@ -999,7 +999,7 @@ class SwarmRunner:
         stdout, _ = await proc.communicate()
         if proc.returncode != 0:
             message = stdout.decode("utf-8", errors="replace")
-            append_text(runtime.taskdir / "worker.log", f"[swarm.py] git worktree remove failed:\n{message}\n")
+            append_text(runtime.taskdir / "worker.log", f"[ringer.py] git worktree remove failed:\n{message}\n")
 
     async def _record_prepare_error(self, runtime: TaskRuntime, error: str) -> None:
         with self.lock:
@@ -1045,9 +1045,9 @@ class SwarmRunner:
         append_text(
             log_path,
             "\n"
-            f"[swarm.py] attempt {attempt} started {datetime.now(timezone.utc).isoformat()}\n"
-            f"[swarm.py] engine: {runtime.task.engine}\n"
-            f"[swarm.py] command: {shell_command_for_display(cmd)} < /dev/null\n",
+            f"[ringer.py] attempt {attempt} started {datetime.now(timezone.utc).isoformat()}\n"
+            f"[ringer.py] engine: {runtime.task.engine}\n"
+            f"[ringer.py] command: {shell_command_for_display(cmd)} < /dev/null\n",
         )
         capture = RollingBytes(max_bytes=1_000_000)
         try:
@@ -1065,7 +1065,7 @@ class SwarmRunner:
                     start_new_session=True,
                 )
             except Exception as exc:
-                message = f"[swarm.py] worker spawn failed: {exc}\n"
+                message = f"[ringer.py] worker spawn failed: {exc}\n"
                 log_fh.write(message.encode("utf-8", errors="replace"))
                 log_fh.flush()
                 return WorkerResult(returncode=None, timed_out=False, tokens=None, error=str(exc))
@@ -1094,8 +1094,8 @@ class SwarmRunner:
         output_tail = capture.text()
         tokens = parse_token_count(output_tail, engine.token_regex)
         if timed_out:
-            append_text(log_path, f"\n[swarm.py] worker timed out after {runtime.task.timeout_s}s\n")
-        append_text(log_path, f"[swarm.py] attempt {attempt} exited rc={proc.returncode}\n")
+            append_text(log_path, f"\n[ringer.py] worker timed out after {runtime.task.timeout_s}s\n")
+        append_text(log_path, f"[ringer.py] attempt {attempt} exited rc={proc.returncode}\n")
         return WorkerResult(returncode=proc.returncode, timed_out=timed_out, tokens=tokens)
 
     async def _tee_stream(
@@ -1142,7 +1142,7 @@ class SwarmRunner:
         self.logger.log_attempt(
             {
                 "run_id": self.run_id,
-                "pattern": "swarm-py",
+                "pattern": "ringer-py",
                 "task_key": runtime.task.key,
                 "spec": spec[:500],
                 "worker_engine": runtime.task.engine,
@@ -1204,8 +1204,8 @@ def build_run_id(run_name: str) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", run_name.strip()).strip("-")
     # pid suffix: same-second launches of the same run_name must not collide
-    # (concurrent swarms would otherwise share a state file and eval run_id).
-    return f"{safe_name or 'swarm'}-{stamp}-p{os.getpid()}"
+    # (concurrent ringer runs would otherwise share a state file and eval run_id).
+    return f"{safe_name or 'ringer'}-{stamp}-p{os.getpid()}"
 
 
 def resolve_identity(value: str | None, config: AppConfig) -> str:
@@ -1447,10 +1447,10 @@ def print_summary(run_id: str, runtimes: list[TaskRuntime]) -> None:
 
 
 def create_demo_manifest() -> Path:
-    root = Path(tempfile.mkdtemp(prefix="swarm-demo-"))
+    root = Path(tempfile.mkdtemp(prefix="ringer-demo-"))
     workdir = root / "work"
     manifest = {
-        "run_name": "swarm-demo",
+        "run_name": "ringer-demo",
         "workdir": str(workdir),
         "max_parallel": 3,
         "worktrees": False,
@@ -1476,7 +1476,7 @@ def create_demo_manifest() -> Path:
             },
         ],
     }
-    path = root / "swarm.json"
+    path = root / "ringer.json"
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return path
 
@@ -1488,7 +1488,7 @@ async def run_manifest(
     dashboard_enabled: bool,
     force_browser: bool,
 ) -> int:
-    runner = SwarmRunner(
+    runner = RingerRunner(
         manifest,
         config=config,
         identity=identity,
@@ -1500,9 +1500,9 @@ async def run_manifest(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="swarm.py",
+        prog="ringer.py",
         description=(
-            "Deterministic AI-agent swarm orchestrator. Runs manifest tasks in parallel, "
+            "Ringer: deterministic parallel AI-agent orchestrator. Runs manifest tasks in parallel, "
             "verifies artifacts with executed checks, retries failures once, logs eval rows, "
             "and serves a live dashboard."
         ),
@@ -1510,21 +1510,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, help="path to config.toml (default: XDG config path)")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    run_parser = subparsers.add_parser("run", help="run a swarm manifest")
-    run_parser.add_argument("manifest", type=Path, help="path to swarm.json")
+    run_parser = subparsers.add_parser("run", help="run a ringer manifest")
+    run_parser.add_argument("manifest", type=Path, help="path to ringer.json")
     run_parser.add_argument("--config", type=Path, default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     run_parser.add_argument("--max-parallel", type=int, help="override manifest max_parallel")
-    run_parser.add_argument("--identity", help="orchestrator identity for HUD state and swarm_runs")
+    run_parser.add_argument("--identity", help="orchestrator identity for HUD state and eval rows")
     run_parser.add_argument("--no-dashboard", action="store_true", help="disable live dashboard")
-    run_parser.add_argument("--browser", action="store_true", help="open the dashboard in the browser instead of SwarmHUD")
+    run_parser.add_argument("--browser", action="store_true", help="open the dashboard in the browser instead of Ringside")
     run_parser.add_argument("--dry-run", action="store_true", help="print the plan without spawning codex")
 
     demo_parser = subparsers.add_parser("demo", help="generate and run a 3-task toy manifest in /tmp")
     demo_parser.add_argument("--config", type=Path, default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     demo_parser.add_argument("--max-parallel", type=int, help="override demo max_parallel")
-    demo_parser.add_argument("--identity", help="orchestrator identity for HUD state and swarm_runs")
+    demo_parser.add_argument("--identity", help="orchestrator identity for HUD state and eval rows")
     demo_parser.add_argument("--no-dashboard", action="store_true", help="disable live dashboard")
-    demo_parser.add_argument("--browser", action="store_true", help="open the dashboard in the browser instead of SwarmHUD")
+    demo_parser.add_argument("--browser", action="store_true", help="open the dashboard in the browser instead of Ringside")
     demo_parser.add_argument("--dry-run", action="store_true", help="print the demo plan without spawning codex")
     return parser
 
@@ -1565,7 +1565,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\nInterrupted.", file=sys.stderr)
         return 130
     except Exception as exc:
-        print(f"swarm.py: error: {exc}", file=sys.stderr)
+        print(f"ringer.py: error: {exc}", file=sys.stderr)
         return 2
 
 

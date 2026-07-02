@@ -1,12 +1,12 @@
-# Sample config for swarm.py.
-# Copy to ~/.config/swarm/config.toml or pass with --config /path/to/config.toml.
+# Sample config for ringer.py.
+# Copy to ~/.config/ringer/config.toml or pass with --config /path/to/config.toml.
 
 # Default identity stamped into state JSON and eval rows when --identity and env vars
 # are not set. Leave unset for the public fallback: short hostname.
 # identity_default = "codex-mini"
 
 # State files live under <state_dir>/runs/<run_id>.json.
-state_dir = "~/.swarm"
+state_dir = "~/.ringer"
 
 # First localhost port tried for the per-run dashboard. The server will scan the
 # next 49 ports if this one is busy.
@@ -14,7 +14,7 @@ dashboard_port_base = 8787
 
 # Optional native HUD app path. Public installs should omit this and let the
 # dashboard open in the browser.
-# hud_app_path = "/Applications/SwarmHUD.app"
+# hud_app_path = "/Applications/Ringside.app"
 
 # Belt-and-suspenders full-access gate. A task with "full_access": true will
 # still fail unless this is true.
@@ -24,7 +24,7 @@ allow_full_access = false
 # Safe public default: write one JSON object per attempt to a local JSONL file.
 # Use "postgres" only when [eval.postgres] is configured.
 backend = "jsonl"
-jsonl_path = "~/.swarm/runs.jsonl"
+jsonl_path = "~/.ringer/runs.jsonl"
 
 # Optional Supabase/Postgres logging. The env file should define:
 # SUPABASE_DB_HOST, SUPABASE_DB_PORT, SUPABASE_DB_USER,

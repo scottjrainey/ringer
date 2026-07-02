@@ -1,15 +1,18 @@
-# swarm.py
+# Ringer
 
-Parallel AI-agent swarm orchestrator plus mission control dashboard.
+Ringer — parallel AI-agent swarm orchestrator. Ringside — its mission-control HUD.
 
-It reads a JSON manifest, creates one task directory per worker, runs workers in parallel, verifies results by executing your check commands, retries failures once, logs raw attempts, and writes live state for the web dashboard or HUD.
+Ringer reads a JSON manifest, creates one task directory per worker, runs workers in parallel, verifies results by executing your check commands, retries failures once, logs raw attempts, and writes live state for the web dashboard or Ringside.
+
+`SwarmHUD.swift` is the deprecated macOS-only predecessor to Ringside. Keep it for reference; use the Tauri app in `hud/` for current builds.
 
 ## Quickstart
 
 ```bash
-cp config.sample.toml ~/.config/swarm/config.toml
-./swarm.py demo --dry-run
-./swarm.py demo --no-dashboard
+mkdir -p ~/.config/ringer
+cp config.sample.toml ~/.config/ringer/config.toml
+./ringer.py demo --dry-run
+./ringer.py demo --no-dashboard
 ```
 
 ## Manifest
@@ -17,10 +20,10 @@ cp config.sample.toml ~/.config/swarm/config.toml
 Run a manifest:
 
 ```bash
-./swarm.py run swarm.json --max-parallel 4
+./ringer.py run ringer.json --max-parallel 4
 ```
 
-Minimal `swarm.json`:
+Minimal `ringer.json`:
 
 ```json
 {
@@ -61,11 +64,11 @@ Manifest fields:
 
 ## Config
 
-Default path: `~/.config/swarm/config.toml`. `XDG_CONFIG_HOME` is respected. You can override with:
+Default path: `~/.config/ringer/config.toml`. `XDG_CONFIG_HOME` is respected. You can override with:
 
 ```bash
-./swarm.py --config ./config.toml run swarm.json
-./swarm.py run swarm.json --config ./config.toml
+./ringer.py --config ./config.toml run ringer.json
+./ringer.py run ringer.json --config ./config.toml
 ```
 
 Public defaults are safe when no config exists:
@@ -74,14 +77,14 @@ Public defaults are safe when no config exists:
 - Sandbox is explicit `workspace-write`.
 - Full access is denied.
 - Eval logging goes to local JSONL only.
-- State files go under `~/.swarm/runs/`.
+- State files go under `~/.ringer/runs/`.
 
 Important config fields:
 
 - `identity_default`: fallback identity for state and eval rows.
 - `state_dir`: directory containing `runs/<run_id>.json`.
 - `dashboard_port_base`: first localhost port to try.
-- `hud_app_path`: optional native HUD app path. Omit it for browser opening.
+- `hud_app_path`: optional Ringside app path. Omit it for browser opening.
 - `allow_full_access`: required second gate for any full-access task.
 - `[eval] backend`: `jsonl` or `postgres`.
 - `[eval] jsonl_path`: local fallback or primary JSONL log path.
@@ -115,14 +118,14 @@ Add another engine by defining `[engines.grok]`, `[engines.opencode]`, or any na
 
 - `stdin=DEVNULL`: workers can hang forever under non-TTY supervisors if stdin is left open.
 - Explicit sandbox args: engine defaults change and can be unsafe or read-only in the wrong directory.
-- Low-effort coordinator: `swarm.py` does orchestration, process control, logging, and verification; it does not judge output with another model.
+- Low-effort coordinator: `ringer.py` does orchestration, process control, logging, and verification; it does not judge output with another model.
 - Raw-output verification: checks execute in the task directory and raw output is logged, because summaries hide the bug you need.
 
 ## Commands
 
 ```bash
-./swarm.py run manifest.json [--max-parallel N] [--identity NAME] [--no-dashboard] [--browser] [--dry-run]
-./swarm.py demo [--max-parallel N] [--identity NAME] [--no-dashboard] [--browser] [--dry-run]
+./ringer.py run manifest.json [--max-parallel N] [--identity NAME] [--no-dashboard] [--browser] [--dry-run]
+./ringer.py demo [--max-parallel N] [--identity NAME] [--no-dashboard] [--browser] [--dry-run]
 ```
 
-The dashboard HTML lives in `dashboard/dashboard.html`. The HTTP dashboard passes one run to `update(...)`; the HUD can pass many.
+The dashboard HTML lives in `dashboard/dashboard.html`. The HTTP dashboard passes one run to `update(...)`; Ringside can pass many.

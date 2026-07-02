@@ -1,7 +1,7 @@
 [package]
-name = "swarm-hud"
+name = "ringside"
 version = "0.1.0"
-description = "swarm mission control HUD"
+description = "Ringside mission-control HUD for Ringer"
 authors = ["Jonathan Edwards"]
 edition = "2021"
 rust-version = "1.77"

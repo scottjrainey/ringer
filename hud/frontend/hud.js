@@ -2,7 +2,7 @@
   const tauri = window.__TAURI__;
   if (!tauri) return;
 
-  const EVENT_RUNS = "swarm-runs";
+  const EVENT_RUNS = "ringer-runs";
   const app = document.getElementById("app");
   const topbar = document.querySelector(".topbar");
   const headline = document.getElementById("headline");
@@ -150,12 +150,12 @@
     const liveRuns = runs.filter(run => run.state === "live");
     if (liveRuns.length > 0) {
       const agents = liveRuns.reduce((sum, run) => sum + (run.tasks || []).length, 0);
-      headline.textContent = `${liveRuns.length} swarm${liveRuns.length === 1 ? "" : "s"} · ${agents} agent${agents === 1 ? "" : "s"}`;
+      headline.textContent = `${liveRuns.length} ringer${liveRuns.length === 1 ? "" : "s"} · ${agents} agent${agents === 1 ? "" : "s"}`;
     } else if (runs.length > 0) {
       const newest = runs[0];
-      headline.textContent = newest.state === "died" ? `${newest.run_name || "swarm"} died` : (newest.run_name || "swarm");
+      headline.textContent = newest.state === "died" ? `${newest.run_name || "ringer"} died` : (newest.run_name || "ringer");
     } else {
-      headline.textContent = "no swarms running";
+      headline.textContent = "no ringers running";
     }
 
     if (subtitle) subtitle.textContent = "";

@@ -42,7 +42,8 @@ jobs:
         with:
           projectPath: hud
           tagName: ${{ github.ref_name }}
-          releaseName: swarm ${{ github.ref_name }}
+          releaseName: ringside ${{ github.ref_name }}
+          assetNamePattern: ringside_[version]_[platform]_[arch][setup][ext]
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

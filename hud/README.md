@@ -1,6 +1,8 @@
-# swarm HUD
+# Ringside
 
-Tauri v2 port of `SwarmHUD.swift`. It reads the same `~/.config/swarm/config.toml` state settings as `swarm.py`, scans `<state_dir>/runs/*.json`, and emits the run array into the shared dashboard UI.
+Ringside is the Tauri v2 mission-control HUD for Ringer. It reads `~/.config/ringer/config.toml`, scans `<state_dir>/runs/*.json`, and emits the run array into the shared dashboard UI.
+
+`SwarmHUD.swift` is the deprecated macOS-only predecessor. Keep it for reference; Ringside is the maintained HUD.
 
 ## Prerequisites
 
@@ -31,4 +33,4 @@ cd hud
 cargo tauri build
 ```
 
-On macOS this produces a `.app` bundle and `.dmg` under `hud/target/release/bundle/`.
+On macOS this produces `hud/target/release/bundle/macos/Ringside.app` plus release bundles under `hud/target/release/bundle/`.

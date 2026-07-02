@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "swarm",
+  "productName": "Ringside",
   "version": "0.1.0",
-  "identifier": "com.jonedwards.swarmhud",
+  "identifier": "com.jonedwards.ringside",
   "build": {
     "frontendDist": "dist"
   },
@@ -12,7 +12,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "swarm",
+        "title": "Ringside",
         "width": 360,
         "height": 420,
         "minWidth": 280,

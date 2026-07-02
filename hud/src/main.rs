@@ -17,18 +17,18 @@ use tauri::{
 };
 
 mod names {
-    pub const TOOL_NAME: &str = "swarm";
-    pub const PRODUCT_NAME: &str = "swarm";
-    pub const BUNDLE_IDENTIFIER: &str = "com.jonedwards.swarmhud";
+    pub const TOOL_NAME: &str = "ringer";
+    pub const PRODUCT_NAME: &str = "Ringside";
+    pub const BUNDLE_IDENTIFIER: &str = "com.jonedwards.ringside";
     pub const CONFIG_DIR_NAME: &str = TOOL_NAME;
     pub const CONFIG_FILE_NAME: &str = "config.toml";
-    pub const ENV_VAR_PREFIX: &str = "SWARM";
-    pub const STATE_DIR_NAME: &str = ".swarm";
+    pub const ENV_VAR_PREFIX: &str = "RINGER";
+    pub const STATE_DIR_NAME: &str = ".ringer";
     pub const MAIN_WINDOW_LABEL: &str = "main";
     pub const TRAY_ID: &str = "main-tray";
     pub const MENU_TOGGLE_ID: &str = "toggle";
     pub const MENU_QUIT_ID: &str = "quit";
-    pub const RUNS_EVENT: &str = "swarm-runs";
+    pub const RUNS_EVENT: &str = "ringer-runs";
 }
 
 const DEFAULT_WIDTH: f64 = 360.0;
@@ -107,7 +107,7 @@ fn main() {
         .manage(Mutex::new(LayoutState::default()))
         .invoke_handler(tauri::generate_handler![hide_window, toggle_collapse])
         .setup(|app| {
-            debug_assert_eq!(names::BUNDLE_IDENTIFIER, "com.jonedwards.swarmhud");
+            debug_assert_eq!(names::BUNDLE_IDENTIFIER, "com.jonedwards.ringside");
             configure_main_window(app.handle());
             build_tray(app)?;
             start_state_poller(app.handle().clone());

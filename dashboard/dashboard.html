@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>swarm mission control</title>
+  <title>Ringside mission control</title>
   <style>
     :root {
       color-scheme: dark;
@@ -258,12 +258,12 @@
     <header class="topbar">
       <span id="topDot" class="top-dot"></span>
       <div class="title">
-        <h1 id="headline">swarm mission control</h1>
-        <div id="subtitle" class="subtitle">no swarms running</div>
+        <h1 id="headline">Ringside mission control</h1>
+        <div id="subtitle" class="subtitle">no ringers running</div>
       </div>
       <div id="clock" class="clock">00:00</div>
     </header>
-    <main id="app"><div class="empty">no swarms running</div></main>
+    <main id="app"><div class="empty">no ringers running</div></main>
   </div>
   <script>
     const app = document.getElementById("app");
@@ -320,7 +320,7 @@
           ...run,
           state,
           identity: run.identity || "unknown",
-          run_name: run.run_name || "swarm",
+          run_name: run.run_name || "ringer",
           elapsed_s: elapsedFromStart(run),
           pass,
           fail,
@@ -361,7 +361,7 @@
           <header class="run-head">
             <span class="dot ${escapeHTML(run.state)}"></span>
             <div class="run-main">
-              <div class="run-name" title="${escapeHTML(run.run_name)}">${escapeHTML(run.run_name || "swarm")}</div>
+              <div class="run-name" title="${escapeHTML(run.run_name)}">${escapeHTML(run.run_name || "ringer")}</div>
               <span class="identity" style="--identity:${identityColor(identity)}" title="${escapeHTML(identity)}">${escapeHTML(identity)}</span>
             </div>
             <div class="run-meta">
@@ -387,17 +387,17 @@
 
       if (liveRuns.length > 1) {
         const agents = liveRuns.reduce((sum, run) => sum + (run.tasks || []).length, 0);
-        headline.textContent = `${liveRuns.length} swarms`;
+        headline.textContent = `${liveRuns.length} ringers`;
         subtitle.textContent = `${agents} agents`;
       } else if (liveRuns.length === 1) {
-        headline.textContent = liveRuns[0].run_name || "swarm";
+        headline.textContent = liveRuns[0].run_name || "ringer";
         subtitle.textContent = liveRuns[0].identity || "unknown";
       } else if (newest) {
-        headline.textContent = newest.state === "died" ? `${newest.run_name || "swarm"} died` : (newest.run_name || "swarm");
-        subtitle.textContent = `${runs.length} swarm${runs.length === 1 ? "" : "s"}`;
+        headline.textContent = newest.state === "died" ? `${newest.run_name || "ringer"} died` : (newest.run_name || "ringer");
+        subtitle.textContent = `${runs.length} ringer${runs.length === 1 ? "" : "s"}`;
       } else {
-        headline.textContent = "swarm mission control";
-        subtitle.textContent = "no swarms running";
+        headline.textContent = "Ringside mission control";
+        subtitle.textContent = "no ringers running";
       }
       const maxElapsed = runs.reduce((max, run) => Math.max(max, Number(run.elapsed_s || 0)), 0);
       clock.textContent = fmtElapsed(maxElapsed);
@@ -407,7 +407,7 @@
       currentRuns = normalizePayload(payload);
       updateTopbar(currentRuns);
       if (currentRuns.length === 0) {
-        app.innerHTML = `<div class="empty">no swarms running</div>`;
+        app.innerHTML = `<div class="empty">no ringers running</div>`;
         return;
       }
       app.innerHTML = currentRuns.map(renderRun).join("");
