@@ -2,16 +2,14 @@
   const tauri = window.__TAURI__;
   if (!tauri) return;
 
+  const HUD_BUILD = "b3";
   const EVENT_RUNS = "ringer-runs";
   const app = document.getElementById("app");
-  const topbar = document.querySelector(".topbar");
-  const headline = document.getElementById("headline");
-  const subtitle = document.getElementById("subtitle");
-  const clock = document.getElementById("clock");
-  let collapsed = false;
+  const webHeader = document.querySelector(".topbar");
   let latestRuns = [];
 
   document.documentElement.classList.add("tauri-hud");
+  document.title = `Ringside ${HUD_BUILD}`;
 
   const style = document.createElement("style");
   style.textContent = `
@@ -33,90 +31,108 @@
         linear-gradient(180deg, rgba(8,10,15,.94), rgba(13,17,25,.97) 60%, rgba(8,10,15,.94));
       box-shadow: 0 18px 50px rgba(0,0,0,.38);
     }
-    .tauri-hud .topbar {
-      position: relative;
-      z-index: 20;
+    /* The web dashboard's own header is not used in the HUD at all —
+       the HUD builds its own bar so no inherited layout can break it. */
+    .tauri-hud .topbar { display: none !important; }
+    #hud-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 34px;
+      z-index: 1000;
       display: flex;
       flex-wrap: nowrap;
       align-items: center;
-      height: 34px;
-      min-height: 34px;
-      max-height: 34px;
       gap: 9px;
       padding: 0 8px 0 14px;
+      box-sizing: border-box;
       border-bottom: 1px solid rgba(255,255,255,.10);
       background: rgba(5,8,12,.50);
-      overflow: hidden;
       user-select: none;
       -webkit-user-select: none;
     }
-    .tauri-hud .top-dot {
+    #hud-bar .hud-dot {
       width: 10px;
       height: 10px;
       flex: 0 0 10px;
+      border-radius: 50%;
+      background: #5c6675;
     }
-    .tauri-hud .title {
-      display: block;
+    #hud-bar .hud-dot.live { background: #35d5ff; animation: dotPulse 1.35s infinite; }
+    #hud-bar .hud-dot.pass { background: #3ddc84; }
+    #hud-bar .hud-dot.fail { background: #ff5468; }
+    #hud-bar .hud-title {
       flex: 1 1 auto;
       min-width: 0;
       overflow: hidden;
-    }
-    .tauri-hud h1 {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 12px;
-      line-height: 34px;
-      text-transform: none;
-      overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-    }
-    .tauri-hud .subtitle,
-    .tauri-hud .clock {
-      display: none;
+      font: 700 12px/34px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: #eef4ff;
     }
     .tauri-hud #app {
       height: calc(100% - 34px);
+      margin-top: 34px;
       gap: 10px;
       padding: 10px;
       overflow: auto;
+      box-sizing: border-box;
     }
     .tauri-hud .tasks {
       grid-template-columns: repeat(auto-fill, minmax(106px, 1fr));
     }
-    .hud-button {
-      width: 24px;
-      height: 24px;
-      min-width: 24px;
-      max-width: 24px;
-      flex: 0 0 24px;
-      display: grid;
-      place-items: center;
+    /* macOS traffic-light close button, top-left like every Mac app. */
+    #hud-close {
+      width: 12px;
+      height: 12px;
+      min-width: 12px;
+      flex: 0 0 12px;
       padding: 0;
       border: 0;
-      border-radius: 6px;
-      background: transparent;
-      color: rgba(238,244,255,.86);
-      font: 700 15px/1 system-ui, sans-serif;
+      border-radius: 50%;
+      background: rgba(255,255,255,.22);
+      color: transparent;
+      font: 700 9px/12px system-ui, sans-serif;
+      text-align: center;
       cursor: pointer;
       position: relative;
       z-index: 30;
+      transition: background .15s ease;
     }
-    .hud-button:hover {
-      background: rgba(255,255,255,.10);
-      color: #fff;
-    }
-    .tauri-hud.is-collapsed .shell {
-      border-radius: 12px;
-    }
-    .tauri-hud.is-collapsed #app,
-    .tauri-hud.is-collapsed .hud-hide {
-      display: none;
-    }
-    .tauri-hud.is-collapsed .topbar {
-      border-bottom: 0;
-    }
+    #hud-bar:hover #hud-close { background: #ff5f57; }
+    #hud-close:hover { color: rgba(60,0,0,.75); }
   `;
   document.head.appendChild(style);
+
+  // Surface any frontend failure where AX can read it: the window title.
+  window.addEventListener("error", event => {
+    document.title = `Ringside ERR: ${event.message}`.slice(0, 120);
+  });
+
+  // Build the HUD's own bar from scratch.
+  // Order: close button far left (macOS convention), then dot, then ticker.
+  if (webHeader) webHeader.style.display = "none";
+  const bar = document.createElement("div");
+  bar.id = "hud-bar";
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.id = "hud-close";
+  closeButton.title = "Close";
+  closeButton.textContent = "×";
+  const dot = document.createElement("span");
+  dot.className = "hud-dot";
+  const title = document.createElement("span");
+  title.className = "hud-title";
+  title.textContent = "no ringers running";
+  bar.append(closeButton, dot, title);
+  // The script may execute from <head> before <body> exists.
+  const attachBar = () => document.body.appendChild(bar);
+  if (document.body) {
+    attachBar();
+  } else {
+    document.addEventListener("DOMContentLoaded", attachBar);
+  }
 
   const currentWindow = tauri.window?.getCurrentWindow?.();
   const noDragSelector = "button, a, input, select, textarea, [data-no-drag]";
@@ -132,35 +148,10 @@
     if (drag?.catch) drag.catch(() => {});
   });
 
-  if (topbar) {
-    const collapseButton = document.createElement("button");
-    collapseButton.type = "button";
-    collapseButton.className = "hud-button hud-collapse";
-    collapseButton.title = "Collapse";
-    collapseButton.textContent = "-";
-
-    const hideButton = document.createElement("button");
-    hideButton.type = "button";
-    hideButton.className = "hud-button hud-hide";
-    hideButton.title = "Hide";
-    hideButton.textContent = "x";
-
-    topbar.append(collapseButton, hideButton);
-
-    collapseButton.addEventListener("click", async event => {
-      event.stopPropagation();
-      try {
-        applyCollapsedState(Boolean(await invoke("toggle_collapse")), collapseButton);
-      } catch (error) {
-        console.error("Ringside collapse toggle failed", error);
-      }
-    });
-
-    hideButton.addEventListener("click", event => {
-      event.stopPropagation();
-      invoke("hide_window");
-    });
-  }
+  closeButton.addEventListener("click", event => {
+    event.stopPropagation();
+    invoke("hide_window");
+  });
 
   window.addEventListener("keydown", event => {
     if (event.key === "Escape") {
@@ -176,33 +167,20 @@
   });
 
   function renderHudTitle(runs) {
-    if (!headline) return;
-
     const liveRuns = runs.filter(run => run.state === "live");
+    let dotState = "";
     if (liveRuns.length > 0) {
       const agents = liveRuns.reduce((sum, run) => sum + (run.tasks || []).length, 0);
-      headline.textContent = `${liveRuns.length} ringer${liveRuns.length === 1 ? "" : "s"} · ${agents} agent${agents === 1 ? "" : "s"}`;
+      title.textContent = `${liveRuns.length} ringer${liveRuns.length === 1 ? "" : "s"} · ${agents} agent${agents === 1 ? "" : "s"}`;
+      dotState = liveRuns.some(run => numberOrZero(run.fail) > 0) ? "fail" : "live";
     } else if (runs.length > 0) {
       const newest = newestRun(runs);
-      headline.textContent = finalTickerText(newest);
+      title.textContent = finalTickerText(newest);
+      dotState = newest.state === "died" || numberOrZero(newest.fail) > 0 ? "fail" : "pass";
     } else {
-      headline.textContent = "no ringers running";
+      title.textContent = "no ringers running";
     }
-
-    if (subtitle) subtitle.textContent = "";
-    if (clock) clock.textContent = "";
-  }
-
-  function applyCollapsedState(nextCollapsed, collapseButton) {
-    collapsed = nextCollapsed;
-    const root = document.documentElement;
-    root.classList.toggle("is-collapsed", collapsed);
-    if (collapsed && !root.classList.contains("is-collapsed")) {
-      console.error("Ringside collapse class did not apply to document.documentElement");
-    }
-    collapseButton.textContent = collapsed ? "+" : "-";
-    collapseButton.title = collapsed ? "Expand" : "Collapse";
-    renderHudTitle(latestRuns);
+    dot.className = `hud-dot${dotState ? " " + dotState : ""}`;
   }
 
   function finalTickerText(run) {
