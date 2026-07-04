@@ -99,6 +99,80 @@ fn toggle_collapse<R: Runtime>(
     Ok(true)
 }
 
+/// Feature 3 (selectable views): resize to a named preset from the frontend's view-mode
+/// toolbar, without fighting the mini-strip `toggle_collapse` bookkeeping.
+#[tauri::command]
+fn resize_main_window<R: Runtime>(
+    window: WebviewWindow<R>,
+    layout: State<'_, Mutex<LayoutState>>,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    let clamped_width = width.max(MIN_WIDTH);
+    let clamped_height = height.max(MIN_HEIGHT);
+    window
+        .set_min_size(Some(LogicalSize::new(MIN_WIDTH, MIN_HEIGHT)))
+        .map_err(|err| err.to_string())?;
+    window
+        .set_size(LogicalSize::new(clamped_width, clamped_height))
+        .map_err(|err| err.to_string())?;
+    let mut layout = layout
+        .lock()
+        .map_err(|_| "layout lock poisoned".to_string())?;
+    layout.collapsed = false;
+    layout.expanded_size = Some(LogicalSize::new(clamped_width, clamped_height));
+    Ok(())
+}
+
+/// Feature 2 (embedded live artifact): read a Tier 0 HTML artifact ringer.py rendered to disk,
+/// so the frontend can embed it via `<iframe srcdoc>` without relaxing the webview CSP or
+/// touching the Tauri `asset:` protocol scope. Restricted to files under the resolved ringer
+/// state dir (never an arbitrary path from the frontend).
+#[tauri::command]
+fn read_artifact_html(path: String) -> Result<String, String> {
+    let state_dir = load_state_dir();
+    let requested = expand_path(&path);
+    let canonical_root = state_dir
+        .canonicalize()
+        .map_err(|err| format!("state dir unavailable: {err}"))?;
+    let canonical_requested = requested
+        .canonicalize()
+        .map_err(|err| format!("artifact not found: {err}"))?;
+    if !canonical_requested.starts_with(&canonical_root) {
+        return Err("refusing to read a path outside the ringer state dir".to_string());
+    }
+    fs::read_to_string(canonical_requested).map_err(|err| err.to_string())
+}
+
+/// Feature 5 (settings panel): plain JSON file, not UserDefaults (this is Tauri, not Swift),
+/// so the same file could later be read by a Tier 0 HTML artifact for matching theme. Lives
+/// alongside ringer's own state under `<state_dir>/ringside-settings.json`.
+fn settings_path() -> PathBuf {
+    load_state_dir().join("ringside-settings.json")
+}
+
+#[tauri::command]
+fn load_settings() -> Result<Value, String> {
+    let path = settings_path();
+    match fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).map_err(|err| err.to_string()),
+        Err(_) => Ok(Value::Object(Map::new())),
+    }
+}
+
+#[tauri::command]
+fn save_settings(settings: Value) -> Result<(), String> {
+    let path = settings_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+    let text = serde_json::to_string_pretty(&settings).map_err(|err| err.to_string())?;
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, text).map_err(|err| err.to_string())?;
+    fs::rename(&tmp, &path).map_err(|err| err.to_string())?;
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -106,7 +180,14 @@ fn main() {
         }))
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(Mutex::new(LayoutState::default()))
-        .invoke_handler(tauri::generate_handler![hide_window, toggle_collapse])
+        .invoke_handler(tauri::generate_handler![
+            hide_window,
+            toggle_collapse,
+            resize_main_window,
+            read_artifact_html,
+            load_settings,
+            save_settings
+        ])
         .setup(|app| {
             debug_assert_eq!(names::BUNDLE_IDENTIFIER, "com.jonedwards.ringside");
             configure_main_window(app.handle());
