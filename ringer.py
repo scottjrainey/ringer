@@ -1036,22 +1036,22 @@ def scan_run_states(state_dir: Path) -> list[dict[str, Any]]:
 
 
 STATUS_COLORS = {
-    "pass": "#49e27d",
-    "fail": "#ff5468",
-    "error": "#ff5468",
-    "timeout": "#ff5468",
-    "running": "#28d7ff",
-    "retrying": "#28d7ff",
-    "verifying": "#ffbe45",
-    "queued": "#778195",
-    "died": "#ff5468",
-    "live": "#28d7ff",
-    "finished": "#49e27d",
+    "pass": "var(--pass)",
+    "fail": "var(--fail)",
+    "error": "var(--fail)",
+    "timeout": "var(--fail)",
+    "running": "var(--running)",
+    "retrying": "var(--running)",
+    "verifying": "var(--running)",
+    "queued": "var(--waiting)",
+    "died": "var(--fail)",
+    "live": "var(--running)",
+    "finished": "var(--pass)",
 }
 
 
 def status_color(status: str) -> str:
-    return STATUS_COLORS.get(str(status).lower(), "#778195")
+    return STATUS_COLORS.get(str(status).lower(), "var(--waiting)")
 
 
 def fmt_duration(seconds: Any) -> str:
@@ -1118,38 +1118,272 @@ def fmt_plain_ago(seconds: Any) -> str:
 
 
 ARTIFACT_BASE_CSS = """
+  :root {
+    color-scheme: dark;
+    --ground:#0a0d13;
+    --surface:#11161f;
+    --ink:#e8eef8;
+    --muted:#8fa0b5;
+    --accent:#2fd0ff;
+    --pass:#3ddc84;
+    --fail:#ff5d5d;
+    --running:#2fd0ff;
+    --waiting:#8fa0b5;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --ground:#f5f7fa;
+      --surface:#ffffff;
+      --ink:#16202c;
+      --muted:#5c6b7d;
+      --accent:#0092c8;
+      --pass:#1f9d5a;
+      --fail:#c93434;
+      --running:#007fae;
+      --waiting:#5c6b7d;
+    }
+  }
+  :root[data-theme=dark] {
+    color-scheme: dark;
+    --ground:#0a0d13;
+    --surface:#11161f;
+    --ink:#e8eef8;
+    --muted:#8fa0b5;
+    --accent:#2fd0ff;
+    --pass:#3ddc84;
+    --fail:#ff5d5d;
+    --running:#2fd0ff;
+    --waiting:#8fa0b5;
+  }
+  :root[data-theme=light] {
+    color-scheme: light;
+    --ground:#f5f7fa;
+    --surface:#ffffff;
+    --ink:#16202c;
+    --muted:#5c6b7d;
+    --accent:#0092c8;
+    --pass:#1f9d5a;
+    --fail:#c93434;
+    --running:#007fae;
+    --waiting:#5c6b7d;
+  }
   * { box-sizing: border-box; }
   html, body {
-    margin: 0; min-height: 100%;
-    background: linear-gradient(180deg, #080a0f 0%, #0d1119 60%, #080a0f 100%);
-    color: #eef4ff;
+    margin: 0;
+    min-height: 100%;
+    overflow-x: hidden;
+    background: var(--ground);
+    color: var(--ink);
     font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
-  .wrap { max-width: 1200px; margin: 0 auto; padding: 22px 18px 48px; }
-  h1 { font-size: 21px; letter-spacing: .02em; text-transform: uppercase; margin: 0 0 4px; }
-  h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin: 20px 0 8px; color: #8f9db2; }
-  .briefing { color: #eef4ff; font-size: 18px; line-height: 1.45; margin: 0; max-width: 900px; }
-  .updates { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 6px; }
-  .updates li { color: #cbd6e8; font-size: 13px; line-height: 1.45; }
-  .updates time { color: #8f9db2; font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin-right: 8px; }
-  .technical-detail { margin-top: 18px; border-top: 1px solid rgba(255,255,255,.08); padding-top: 12px; }
-  .technical-detail > summary { font-size: 13px; font-weight: 800; }
-  .meta { color: #8f9db2; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin-bottom: 16px; line-height: 1.7; }
-  .meta b { color: #cbd6e8; }
+  .wrap {
+    width: 100%;
+    padding: clamp(16px,4vw,48px);
+  }
+  .page-head {
+    margin: 0 0 clamp(18px,4vw,32px);
+  }
+  .eyebrow {
+    max-width: 65ch;
+    margin: 0 0 8px;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .page-title {
+    max-width: 65ch;
+    margin: 0 0 10px;
+    overflow-wrap: anywhere;
+    color: var(--ink);
+    font-size: clamp(20px,4vw,32px);
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1.05;
+  }
+  .briefing {
+    max-width: 65ch;
+    margin: 0;
+    color: var(--ink);
+    font-size: clamp(16px,2.6vw,22px);
+    font-weight: 650;
+    line-height: 1.35;
+    text-wrap: balance;
+  }
+  .progress-wrap {
+    margin: 0 0 clamp(24px,4vw,40px);
+  }
+  .progress-bar {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    gap: 4px;
+    height: 6px;
+    margin: 0 0 9px;
+  }
+  .progress-segment {
+    flex: 1 1 0;
+    min-width: 0;
+    border-radius: 999px;
+    background: var(--state-color);
+  }
+  .progress-legend {
+    max-width: 65ch;
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .section {
+    margin: 0 0 clamp(24px,4vw,40px);
+  }
+  .section-title {
+    max-width: 65ch;
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0;
+  }
+  .updates,
+  .tasks,
+  .runs {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .updates li {
+    display: grid;
+    grid-template-columns: minmax(68px, max-content) minmax(0, 1fr);
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid color-mix(in srgb, var(--muted) 20%, transparent);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .updates time {
+    color: var(--muted);
+  }
+  .omitted-note,
+  .empty-note {
+    max-width: 65ch;
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .task-row,
+  .run-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(112px, .55fr) minmax(76px, .4fr) minmax(150px, .8fr);
+    gap: 16px;
+    align-items: center;
+    padding: 12px 0;
+    border-top: 1px solid color-mix(in srgb, var(--muted) 20%, transparent);
+  }
+  .task-name,
+  .run-name {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ink);
+    font-weight: 700;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .task-state,
+  .run-state {
+    color: var(--state-color);
+    font-weight: 800;
+  }
+  .task-duration,
+  .run-duration {
+    color: var(--muted);
+  }
+  .task-links,
+  .run-links {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+  .task-links .muted,
+  .run-links .muted {
+    color: var(--muted);
+  }
+  .state-pass { --state-color: var(--pass); }
+  .state-fail { --state-color: var(--fail); }
+  .state-running { --state-color: var(--running); }
+  .state-waiting { --state-color: var(--waiting); }
+  .meta {
+    max-width: 65ch;
+    margin: 0 0 18px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .meta b { color: var(--ink); }
+  .mono,
+  time {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .muted { color: var(--muted); }
   table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,.08); vertical-align: top; }
-  th { color: #8f9db2; font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: .05em; }
-  tr:hover td { background: rgba(255,255,255,.025); }
-  .chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; text-transform: uppercase; color: #080a0f; white-space: nowrap; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; color: #cbd6e8; }
-  .muted { color: #8f9db2; }
-  .spec { max-width: 340px; color: #b8c4d6; }
-  details { margin-top: 6px; }
-  summary { cursor: pointer; color: #35d5ff; font-size: 11px; }
-  pre { white-space: pre-wrap; word-break: break-word; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); border-radius: 6px; padding: 8px; font-size: 11px; max-height: 320px; overflow: auto; margin: 6px 0 0; }
-  a { color: #35d5ff; text-decoration: none; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid color-mix(in srgb, var(--muted) 20%, transparent); vertical-align: top; }
+  th { color: var(--muted); font-weight: 700; font-size: 10px; letter-spacing: 0; }
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 800; color: var(--ground); white-space: nowrap; }
+  pre {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, var(--muted) 20%, transparent);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--ink);
+    padding: clamp(14px,3vw,24px);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .page-foot {
+    max-width: 65ch;
+    margin-top: clamp(24px,4vw,44px);
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .top-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: middle; box-shadow: 0 0 14px currentColor; }
+  @media (prefers-reduced-motion: no-preference) {
+    .progress-segment.state-running {
+      animation: ringer-state-pulse 1.35s ease-in-out infinite;
+    }
+    @keyframes ringer-state-pulse {
+      0%, 100% { opacity: .48; }
+      50% { opacity: 1; }
+    }
+  }
+  @media (max-width: 640px) {
+    .task-row,
+    .run-row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 6px;
+    }
+    .task-links,
+    .run-links {
+      gap: 6px 12px;
+    }
+  }
 """
 
 
@@ -1167,6 +1401,16 @@ def sanitize_artifact_name(value: str) -> str:
 
 def is_html_artifact(path: Path) -> bool:
     return path.suffix.lower() in {".html", ".htm"}
+
+
+def deliverable_title(path: Path) -> str:
+    name = path.name.lower()
+    if name == "worker.log":
+        return "Work log"
+    if name in TASK_REPORT_FILENAMES:
+        return "What this worker produced"
+    stem = path.stem.replace("_", " ").replace("-", " ").strip()
+    return stem.capitalize() if stem else "Worker output"
 
 
 class ArtifactRenderer:
@@ -1192,6 +1436,9 @@ class ArtifactRenderer:
         if limit is None:
             return list(reversed(self._transition_log))
         return list(reversed(self._transition_log[-limit:]))
+
+    def omitted_transition_count(self, limit: int) -> int:
+        return max(0, len(self._transition_log) - limit)
 
     def record_transitions(self, state: dict[str, Any]) -> None:
         run_state = str(state.get("state", "live"))
@@ -1301,17 +1548,16 @@ def render_file_wrapper_html(
             fh.seek(start)
         raw = fh.read()
     content = raw.decode("utf-8", errors="replace")
-    source_mtime = datetime.fromtimestamp(source_stat.st_mtime, timezone.utc).strftime(
-        "%Y-%m-%d %H:%M:%S UTC"
+    source_mtime = datetime.fromtimestamp(source_stat.st_mtime).astimezone().strftime(
+        "%Y-%m-%d %H:%M:%S %Z"
     )
     truncation_note = (
-        f" &middot; showing last <b>{ARTIFACT_WRAPPER_TAIL_BYTES:,}</b> bytes"
-        f" of <b>{size:,}</b>"
+        f" Showing the last <b>{ARTIFACT_WRAPPER_TAIL_BYTES:,}</b> bytes"
+        f" of <b>{size:,}</b>."
         if truncated
         else ""
     )
-    title = html_escape(source_path.name)
-    source_text = html_escape(str(source_path))
+    title = html_escape(deliverable_title(source_path))
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -1321,13 +1567,11 @@ def render_file_wrapper_html(
 </head>
 <body>
 <div class="wrap">
-  <h1>{title}</h1>
-  <div class="meta">
-    run <b>{html_escape(run_name)}</b> &middot; task <b>{html_escape(task_key)}</b> &middot;
-    source <span class="mono">{source_text}</span>
-    (<a href="{html_escape(file_href(source_path))}">open file</a>) &middot;
-    modified <b>{source_mtime}</b> &middot; size <b>{size:,}</b> bytes{truncation_note}
-  </div>
+  <header class="page-head">
+    <p class="eyebrow" title="{html_escape(run_name)}">{html_escape(run_name)}</p>
+    <h1 class="page-title">{title}</h1>
+    <p class="meta">{html_escape(task_key)} produced this on <b>{source_mtime}</b>.{truncation_note}</p>
+  </header>
   <pre>{html_escape(content)}</pre>
 </div>
 </body>
@@ -1344,14 +1588,13 @@ def state_tasks(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 def task_status_counts(state: dict[str, Any]) -> dict[str, int]:
     tasks = state_tasks(state)
-    running_statuses = {"running", "verifying", "retrying"}
-    pass_n = sum(1 for task in tasks if str(task.get("status")) == "pass")
-    fail_n = sum(1 for task in tasks if str(task.get("status")) == "fail")
-    running_n = sum(1 for task in tasks if str(task.get("status")) in running_statuses)
-    task_count = len(tasks)
-    waiting_n = max(0, task_count - pass_n - fail_n - running_n)
+    buckets = [task_state_bucket(str(task.get("status", "queued"))) for task in tasks]
+    pass_n = sum(1 for bucket in buckets if bucket == "pass")
+    fail_n = sum(1 for bucket in buckets if bucket == "fail")
+    running_n = sum(1 for bucket in buckets if bucket == "running")
+    waiting_n = sum(1 for bucket in buckets if bucket == "waiting")
     return {
-        "total": task_count,
+        "total": len(tasks),
         "pass": pass_n,
         "fail": fail_n,
         "running": running_n,
@@ -1365,14 +1608,14 @@ def task_word(count: int) -> str:
 
 def passed_phrase(count: int) -> str:
     if count == 1:
-        return "1 passed its check"
-    return f"{count} passed their checks"
+        return "1 finished cleanly"
+    return f"{count} finished cleanly"
 
 
 def failed_phrase(count: int) -> str:
     if count == 1:
-        return "1 failed its check"
-    return f"{count} failed their checks"
+        return "1 failed"
+    return f"{count} failed"
 
 
 def running_phrase(count: int) -> str:
@@ -1389,11 +1632,10 @@ def waiting_phrase(count: int) -> str:
 
 def live_briefing_sentence(state: dict[str, Any]) -> str:
     counts = task_status_counts(state)
-    identity = str(state.get("identity") or "this machine")
     elapsed = fmt_plain_ago(state.get("elapsed_s"))
     total = counts["total"]
     if total == 0:
-        return f"Ringer has no tasks for {identity}. Started {elapsed} ago."
+        return f"Ringer has no tasks. Started {elapsed} ago."
     status_sentence = ", ".join(
         [
             passed_phrase(counts["pass"]),
@@ -1403,7 +1645,7 @@ def live_briefing_sentence(state: dict[str, Any]) -> str:
         ]
     )
     return (
-        f"Ringer is working on {total} {task_word(total)} for {identity}. "
+        f"Ringer is working on {total} {task_word(total)}. "
         f"{status_sentence}, started {elapsed} ago."
     )
 
@@ -1416,7 +1658,7 @@ def final_briefing_sentence(state: dict[str, Any]) -> str:
     elapsed = fmt_compact_duration(state.get("elapsed_s"))
     first = f"Ringer finished {total} {task_word(total)} in {elapsed}."
     if fail_n == 0:
-        return f"{first} All {total} passed their checks."
+        return f"{first} All {total} finished cleanly."
     return f"{first} {pass_n} passed, {fail_n} failed even after a retry."
 
 
@@ -1432,109 +1674,85 @@ def plain_transition_line(
         return f"{task_key} started"
     if status == "retrying":
         if timed_out:
-            return f"{task_key} timed out — sending it back to try again"
-        return f"{task_key} failed its check — sending it back to try again"
+            return f"{task_key} timed out — trying again"
+        return f"{task_key} did not finish cleanly — trying again"
     if status == "pass":
         if attempts > 1:
             return f"{task_key} passed on the second try"
-        return f"{task_key} finished — checked and passed, {fmt_compact_duration(task.get('elapsed_s'))}"
+        return f"{task_key} finished and checked, {fmt_compact_duration(task.get('elapsed_s'))}"
     if status == "fail":
         if timed_out:
             return f"{task_key} timed out"
         if attempts > 1:
-            return f"{task_key} failed its check after the second try"
-        return f"{task_key} failed its check"
+            return f"{task_key} failed after the second try"
+        return f"{task_key} failed"
     if status == "timeout":
         return f"{task_key} timed out"
     return None
 
 
-def render_status_updates(updates: list[dict[str, str]]) -> str:
+def task_state_bucket(status: str) -> str:
+    status = str(status).lower()
+    if status == "pass":
+        return "pass"
+    if status in {"fail", "error", "timeout", "died"}:
+        return "fail"
+    if status in {"running", "verifying", "retrying"}:
+        return "running"
+    return "waiting"
+
+
+def task_state_word(status: str) -> str:
+    bucket = task_state_bucket(status)
+    if bucket == "pass":
+        return "finished and checked"
+    if bucket == "running":
+        return "working"
+    if bucket == "fail":
+        return "failed"
+    return "waiting"
+
+
+def local_time_label() -> str:
+    return datetime.now().astimezone().strftime("%H:%M:%S %Z")
+
+
+def render_progress_bar(tasks: list[dict[str, Any]], counts: dict[str, int]) -> str:
+    segments = []
+    for task in tasks:
+        key = html_escape(str(task.get("key", "task")))
+        bucket = task_state_bucket(str(task.get("status", "queued")))
+        state_word = html_escape(task_state_word(str(task.get("status", "queued"))))
+        segments.append(
+            f'<span class="progress-segment state-{bucket}" aria-label="{key}: {state_word}"></span>'
+        )
+    bar = "".join(segments) if segments else ""
+    legend_parts = []
+    if counts["pass"]:
+        legend_parts.append(f'{counts["pass"]} finished')
+    if counts["running"]:
+        legend_parts.append(f'{counts["running"]} running')
+    if counts["waiting"]:
+        legend_parts.append(f'{counts["waiting"]} waiting')
+    if counts["fail"]:
+        legend_parts.append(f'{counts["fail"]} failed')
+    legend = " &middot; ".join(legend_parts) if legend_parts else "No tasks"
+    return f"""<div class="progress-wrap" aria-label="Task progress">
+    <div class="progress-bar">{bar}</div>
+    <p class="progress-legend">{legend}</p>
+  </div>"""
+
+
+def render_status_updates(updates: list[dict[str, str]], *, omitted: int = 0) -> str:
     if not updates:
         return '<p class="muted">No updates yet.</p>'
     items = []
     for update in updates:
         stamp = html_escape(str(update.get("time", "")))
         line = html_escape(str(update.get("line", "")))
-        items.append(f'<li><time>{stamp}</time>{line}</li>')
-    return '<ol class="updates">' + "".join(items) + "</ol>"
-
-
-def render_live_technical_detail(
-    *,
-    run_name: str,
-    identity: str,
-    run_state: str,
-    dot_color: str,
-    started: str,
-    elapsed: str,
-    done_n: Any,
-    task_count: int,
-    pass_n: Any,
-    fail_n: Any,
-    max_parallel: Any,
-    tokens: int,
-    report_note: str,
-    rows: str,
-) -> str:
-    return f"""<details class="technical-detail">
-    <summary>Technical detail</summary>
-    <h1><span class="top-dot" style="background:{dot_color};color:{dot_color}"></span>{run_name}</h1>
-    <div class="meta">
-      identity <b>{identity}</b> &middot; state <b>{html_escape(run_state)}</b> &middot;
-      started <b>{started}</b> &middot; elapsed <b>{elapsed}</b> &middot;
-      <b>{done_n}/{task_count}</b> done ({pass_n} pass / {fail_n} fail) &middot;
-      max_parallel <b>{max_parallel}</b> &middot; tokens <b>{tokens:,}</b>
-    </div>
-    {report_note}
-    <table>
-      <thead><tr><th>Task</th><th>Status</th><th>Attempts</th><th>Duration</th><th>Check</th><th>Spec</th><th>Links</th></tr></thead>
-      <tbody>
-        {rows}
-      </tbody>
-    </table>
-  </details>"""
-
-
-def render_final_technical_detail(
-    *,
-    run_name: str,
-    identity: str,
-    started: str,
-    elapsed: str,
-    pass_n: int,
-    fail_n: int,
-    task_count: int,
-    tokens: int,
-    max_parallel: Any,
-    overall: str,
-    overall_color: str,
-    run_id: str,
-    rows: str,
-) -> str:
-    return f"""<details class="technical-detail" open>
-    <summary>Technical detail</summary>
-    <h1><span class="top-dot" style="background:{overall_color};color:{overall_color}"></span>{run_name} &mdash; final report</h1>
-    <div class="meta">
-      identity <b>{identity}</b> &middot; overall <b>{overall}</b> &middot;
-      started <b>{started}</b> &middot; elapsed <b>{elapsed}</b> &middot;
-      <b>{pass_n}/{task_count}</b> pass ({fail_n} fail) &middot;
-      max_parallel <b>{max_parallel}</b> &middot; tokens <b>{tokens:,}</b> &middot;
-      run_id <span class="mono">{run_id}</span>
-    </div>
-    <table>
-      <thead><tr>
-        <th>Task</th><th>Verdict</th><th>Attempts</th><th>Duration</th><th>Tokens</th>
-        <th>Check</th><th>Spec preview</th><th>Links</th>
-      </tr></thead>
-      <tbody>
-        {rows}
-      </tbody>
-    </table>
-    <p class="meta">Generated by ringer.py (zero-LLM Tier 0 artifact) at run completion. Spec text
-    is truncated to 200 chars in this report by design (task specs may embed paths from other
-    tasks); see the task's own worker.log / report files linked above for full detail.</p>
-  </details>"""
+        items.append(f'<li><time class="mono">{stamp}</time><span>{line}</span></li>')
+    note = '<p class="omitted-note">earlier updates omitted</p>' if omitted else ""
+    return '<ol class="updates">' + "".join(items) + "</ol>" + note
 
 
 def render_status_html(
@@ -1545,130 +1763,36 @@ def render_status_html(
 ) -> str:
     """Tier 0 zero-LLM live status artifact. Rendered on every state flush (~1s)."""
     run_name = html_escape(str(state.get("run_name", "ringer")))
-    identity = html_escape(str(state.get("identity", "unknown")))
-    run_state = str(state.get("state", "live"))
-    dot_color = status_color(run_state)
-    started = fmt_datetime(str(state.get("started_at", "")))
-    elapsed = fmt_duration(state.get("elapsed_s"))
-    totals = state.get("totals") or {}
-    pass_n = totals.get("pass", state.get("pass", 0))
-    fail_n = totals.get("fail", state.get("fail", 0))
-    done_n = totals.get("done", pass_n + fail_n)
     tasks = state_tasks(state)
-    task_count = len(tasks)
-    max_parallel = state.get("max_parallel", "?")
-    tokens = int(totals.get("tokens", state.get("tokens", 0)) or 0)
+    counts = task_status_counts(state)
     briefing = html_escape(live_briefing_sentence(state))
     updates = renderer.transition_feed(state, limit=50) if renderer else []
-
-    rows = "".join(
-        render_status_row(task, state=state, renderer=renderer, force_wrappers=force_wrappers)
-        for task in tasks
-    ) or (
-        '<tr><td colspan="7" class="muted">no tasks</td></tr>'
-    )
-
-    report_note = ""
-    if state.get("report_ready") and state.get("report_path"):
-        report_path = Path(str(state["report_path"]))
-        report_href = (
-            renderer.link_for_source(
-                report_path,
-                state=state,
-                task_key="run",
-                force=force_wrappers,
-            )
-            if renderer
-            else file_href(report_path)
-        )
-        report_note = (
-            f'<p class="meta">Final report ready: '
-            f'<a href="{html_escape(report_href)}">{html_escape(str(report_path))}</a></p>'
-        )
-
-    technical_detail = render_live_technical_detail(
-        run_name=run_name,
-        identity=identity,
-        run_state=run_state,
-        dot_color=dot_color,
-        started=started,
-        elapsed=elapsed,
-        done_n=done_n,
-        task_count=task_count,
-        pass_n=pass_n,
-        fail_n=fail_n,
-        max_parallel=max_parallel,
-        tokens=tokens,
-        report_note=report_note,
-        rows=rows,
-    )
-
-    refresh = "" if state.get("finished") else '<meta http-equiv="refresh" content="5">'
+    omitted = renderer.omitted_transition_count(50) if renderer else 0
     return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>ringer &middot; {run_name}</title>
-{refresh}
+<meta http-equiv="refresh" content="2">
 <style>{ARTIFACT_BASE_CSS}</style>
 </head>
 <body>
 <div class="wrap">
-  <section aria-labelledby="right-now-heading">
-    <h2 id="right-now-heading">Right now</h2>
-    <p class="briefing">{briefing}</p>
+  <header class="page-head">
+    <p class="eyebrow" title="{run_name}">{run_name}</p>
+    <p id="right-now-heading" class="briefing">{briefing}</p>
+  </header>
+  {render_progress_bar(tasks, counts)}
+  <section class="section" aria-labelledby="status-updates-heading">
+    <h2 class="section-title" id="status-updates-heading">Status updates</h2>
+    {render_status_updates(updates, omitted=omitted)}
   </section>
-  <section aria-labelledby="status-updates-heading">
-    <h2 id="status-updates-heading">Status updates</h2>
-    {render_status_updates(updates)}
-  </section>
-  {technical_detail}
+  {render_task_strip(tasks, state=state, renderer=renderer, force_wrappers=force_wrappers)}
+  <footer class="page-foot mono">Updated {html_escape(local_time_label())} &mdash; this page refreshes itself</footer>
 </div>
 </body>
 </html>
 """
-
-
-def render_status_row(
-    task: dict[str, Any],
-    *,
-    state: dict[str, Any] | None = None,
-    renderer: ArtifactRenderer | None = None,
-    force_wrappers: bool = False,
-) -> str:
-    status = str(task.get("status", "queued"))
-    verdict = task.get("verdict")
-    key = html_escape(str(task.get("key", "")))
-    color = status_color(status)
-    label = status if not verdict or verdict == "PASS" else f"{status} ({verdict})"
-    attempts = task.get("attempts", 0)
-    elapsed = fmt_duration(task.get("elapsed_s"))
-    check_rc = task.get("check_returncode")
-    check_rc_text = "—" if check_rc is None else str(check_rc)
-    check_cmd = html_escape(shorten(str(task.get("check", "")), 200))
-    spec_preview = html_escape(shorten(str(task.get("spec_short") or task.get("spec") or ""), 200))
-
-    fail_block = ""
-    if status == "fail" and str(task.get("check_output_tail", "")).strip():
-        output = html_escape(shorten(str(task.get("check_output_tail", "")), 2000))
-        fail_block = f"<details><summary>check output</summary><pre>{output}</pre></details>"
-
-    links_html = render_task_links(
-        task,
-        state=state or {},
-        renderer=renderer,
-        force_wrappers=force_wrappers,
-    )
-
-    return f"""<tr>
-      <td class="mono">{key}</td>
-      <td><span class="chip" style="background:{color}">{html_escape(label)}</span></td>
-      <td>{attempts}</td>
-      <td class="mono">{elapsed}</td>
-      <td class="mono">rc={check_rc_text}<br>{check_cmd}</td>
-      <td class="spec">{spec_preview}{fail_block}</td>
-      <td class="mono">{links_html}</td>
-    </tr>"""
 
 
 def render_final_report_html(
@@ -1679,44 +1803,11 @@ def render_final_report_html(
 ) -> str:
     """Feature 4: self-contained final report, rendered once when a run finishes."""
     run_name = html_escape(str(state.get("run_name", "ringer")))
-    identity = html_escape(str(state.get("identity", "unknown")))
-    started = fmt_datetime(str(state.get("started_at", "")))
-    elapsed = fmt_duration(state.get("elapsed_s"))
-    totals = state.get("totals") or {}
     tasks = state_tasks(state)
     counts = task_status_counts(state)
-    pass_n = counts["pass"]
-    fail_n = counts["fail"]
-    task_count = len(tasks)
-    tokens = int(totals.get("tokens", state.get("tokens", 0)) or 0)
-    max_parallel = state.get("max_parallel", "?")
-    overall = "PASS" if fail_n == 0 else "FAIL"
-    overall_color = status_color("pass" if fail_n == 0 else "fail")
-    run_id = html_escape(str(state.get("run_id", "")))
     briefing = html_escape(final_briefing_sentence(state))
-    updates = renderer.transition_feed(state, limit=None) if renderer else []
-
-    rows = "".join(
-        render_report_row(task, state=state, renderer=renderer, force_wrappers=force_wrappers)
-        for task in tasks
-    ) or (
-        '<tr><td colspan="8" class="muted">no tasks</td></tr>'
-    )
-    technical_detail = render_final_technical_detail(
-        run_name=run_name,
-        identity=identity,
-        started=started,
-        elapsed=elapsed,
-        pass_n=pass_n,
-        fail_n=fail_n,
-        task_count=task_count,
-        tokens=tokens,
-        max_parallel=max_parallel,
-        overall=overall,
-        overall_color=overall_color,
-        run_id=run_id,
-        rows=rows,
-    )
+    updates = renderer.transition_feed(state, limit=50) if renderer else []
+    omitted = renderer.omitted_transition_count(50) if renderer else 0
 
     return f"""<!doctype html>
 <html lang="en">
@@ -1727,22 +1818,43 @@ def render_final_report_html(
 </head>
 <body>
 <div class="wrap">
-  <section aria-labelledby="what-happened-heading">
-    <h2 id="what-happened-heading">What happened</h2>
-    <p class="briefing">{briefing}</p>
+  <header class="page-head">
+    <p class="eyebrow" title="{run_name}">{run_name}</p>
+    <p id="what-happened-heading" class="briefing">{briefing}</p>
+  </header>
+  {render_progress_bar(tasks, counts)}
+  <section class="section" aria-labelledby="status-updates-heading">
+    <h2 class="section-title" id="status-updates-heading">Status updates</h2>
+    {render_status_updates(updates, omitted=omitted)}
   </section>
-  <section aria-labelledby="status-updates-heading">
-    <h2 id="status-updates-heading">Status updates</h2>
-    {render_status_updates(updates)}
-  </section>
-  {technical_detail}
+  {render_task_strip(tasks, state=state, renderer=renderer, force_wrappers=force_wrappers)}
+  <footer class="page-foot mono">Finished {html_escape(local_time_label())}</footer>
 </div>
 </body>
 </html>
 """
 
 
-def render_report_row(
+def render_task_strip(
+    tasks: list[dict[str, Any]],
+    *,
+    state: dict[str, Any],
+    renderer: ArtifactRenderer | None = None,
+    force_wrappers: bool = False,
+) -> str:
+    rows = "".join(
+        render_task_item(task, state=state, renderer=renderer, force_wrappers=force_wrappers)
+        for task in tasks
+    )
+    if not rows:
+        rows = '<li class="empty-note">No tasks.</li>'
+    return f"""<section class="section" aria-labelledby="tasks-heading">
+    <h2 class="section-title" id="tasks-heading">Tasks</h2>
+    <ol class="tasks">{rows}</ol>
+  </section>"""
+
+
+def render_task_item(
     task: dict[str, Any],
     *,
     state: dict[str, Any] | None = None,
@@ -1750,25 +1862,10 @@ def render_report_row(
     force_wrappers: bool = False,
 ) -> str:
     status = str(task.get("status", "queued"))
-    verdict = str(task.get("verdict") or status.upper())
-    color = status_color(status)
     key = html_escape(str(task.get("key", "")))
-    attempts = task.get("attempts", 0)
-    retried = " (retried)" if isinstance(attempts, int) and attempts > 1 else ""
-    elapsed = fmt_duration(task.get("elapsed_s"))
-    tokens = task.get("tokens")
-    tokens_text = "—" if tokens is None else f"{int(tokens):,}"
-    check_rc = task.get("check_returncode")
-    check_rc_text = "—" if check_rc is None else str(check_rc)
-    check_cmd = html_escape(shorten(str(task.get("check", "")), 300))
-    spec_preview = html_escape(shorten(str(task.get("spec_short") or task.get("spec") or ""), 200))
-    output = html_escape(shorten(str(task.get("check_output_tail", "")), 4000))
-    output_block = (
-        f"<details><summary>check output</summary><pre>{output}</pre></details>"
-        if output.strip()
-        else ""
-    )
-
+    bucket = task_state_bucket(status)
+    state_word = html_escape(task_state_word(status))
+    elapsed = html_escape(fmt_compact_duration(task.get("elapsed_s")))
     links_html = render_task_links(
         task,
         state=state or {},
@@ -1776,16 +1873,12 @@ def render_report_row(
         force_wrappers=force_wrappers,
     )
 
-    return f"""<tr>
-      <td class="mono">{key}</td>
-      <td><span class="chip" style="background:{color}">{html_escape(verdict)}</span></td>
-      <td>{attempts}{retried}</td>
-      <td class="mono">{elapsed}</td>
-      <td class="mono">{tokens_text}</td>
-      <td class="mono">rc={check_rc_text}<br>{check_cmd}{output_block}</td>
-      <td class="spec">{spec_preview}</td>
-      <td class="mono">{links_html}</td>
-    </tr>"""
+    return f"""<li class="task-row state-{bucket}">
+      <span class="task-name" title="{key}">{key}</span>
+      <span class="task-state">{state_word}</span>
+      <span class="task-duration mono">{elapsed}</span>
+      <span class="task-links">{links_html}</span>
+    </li>"""
 
 
 def render_task_links(
@@ -1800,27 +1893,8 @@ def render_task_links(
     taskdir = task.get("taskdir")
     if taskdir:
         taskdir_path = Path(str(taskdir))
-        if taskdir_path.exists():
-            links.append(f'<a href="{html_escape(file_href(taskdir_path))}">taskdir</a>')
 
     task_key = str(task.get("key", "task"))
-
-    log_path = task.get("log_path")
-    worker_log = Path(str(log_path)) if log_path else None
-    if worker_log is None and taskdir_path is not None:
-        worker_log = taskdir_path / "worker.log"
-    if worker_log is not None and worker_log.exists():
-        href = (
-            renderer.link_for_source(
-                worker_log,
-                state=state,
-                task_key=task_key,
-                force=force_wrappers,
-            )
-            if renderer
-            else file_href(worker_log)
-        )
-        links.append(f'<a href="{html_escape(href)}">worker.log</a>')
 
     report_paths = task.get("report_paths") or {}
     if not isinstance(report_paths, dict):
@@ -1841,7 +1915,25 @@ def render_task_links(
                 if renderer
                 else file_href(report_file)
             )
-            links.append(f'<a href="{html_escape(href)}">{report_name}</a>')
+            links.append(f'<a href="{html_escape(href)}">read what this worker produced</a>')
+            break
+
+    log_path = task.get("log_path")
+    worker_log = Path(str(log_path)) if log_path else None
+    if worker_log is None and taskdir_path is not None:
+        worker_log = taskdir_path / "worker.log"
+    if worker_log is not None and worker_log.exists():
+        href = (
+            renderer.link_for_source(
+                worker_log,
+                state=state,
+                task_key=task_key,
+                force=force_wrappers,
+            )
+            if renderer
+            else file_href(worker_log)
+        )
+        links.append(f'<a href="{html_escape(href)}">view the work log</a>')
 
     return " &middot; ".join(links) if links else '<span class="muted">—</span>'
 

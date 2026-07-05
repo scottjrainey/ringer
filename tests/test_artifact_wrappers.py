@@ -88,14 +88,15 @@ class ArtifactWrapperTests(unittest.TestCase):
 
         wrapper_html = log_wrapper.read_text(encoding="utf-8")
         self.assertIn(ARTIFACT_BASE_CSS, wrapper_html)
-        self.assertIn("<title>worker.log</title>", wrapper_html)
-        self.assertIn("<h1>worker.log</h1>", wrapper_html)
-        self.assertIn("run <b>Wrapper Run</b>", wrapper_html)
-        self.assertIn("task <b>task-one</b>", wrapper_html)
-        self.assertIn(str(self.worker_log), wrapper_html)
-        self.assertIn(file_href(self.worker_log), wrapper_html)
-        self.assertIn("modified <b>", wrapper_html)
-        self.assertIn(f"size <b>{self.worker_log.stat().st_size:,}</b> bytes", wrapper_html)
+        self.assertIn("--ground:#0a0d13", wrapper_html)
+        self.assertIn(":root[data-theme=dark]", wrapper_html)
+        self.assertIn(":root[data-theme=light]", wrapper_html)
+        self.assertIn("<title>Work log</title>", wrapper_html)
+        self.assertIn('<h1 class="page-title">Work log</h1>', wrapper_html)
+        self.assertIn('class="eyebrow" title="Wrapper Run">Wrapper Run</p>', wrapper_html)
+        self.assertIn("task-one produced this on <b>", wrapper_html)
+        self.assertNotIn(str(self.worker_log), wrapper_html)
+        self.assertNotIn(file_href(self.worker_log), wrapper_html)
         self.assertIn("plain &lt;script&gt;log&lt;/script&gt;", wrapper_html)
 
     def test_final_report_links_wrappers_not_raw_files(self) -> None:
@@ -105,8 +106,10 @@ class ArtifactWrapperTests(unittest.TestCase):
         self.assertIn(file_href(self.wrapper_path(self.report_md)), html)
         self.assertNotIn(file_href(self.worker_log), html)
         self.assertNotIn(file_href(self.report_md), html)
-        self.assertIn(">worker.log</a>", html)
-        self.assertIn(">report.md</a>", html)
+        self.assertIn(">view the work log</a>", html)
+        self.assertIn(">read what this worker produced</a>", html)
+        self.assertNotIn(">worker.log</a>", html)
+        self.assertNotIn(">report.md</a>", html)
 
     def test_large_source_embeds_tail_only_and_says_so(self) -> None:
         large_report = self.taskdir / "large-report.md"
@@ -120,7 +123,7 @@ class ArtifactWrapperTests(unittest.TestCase):
         render_status_html(state, renderer=self.renderer)
 
         wrapper_html = self.wrapper_path(large_report).read_text(encoding="utf-8")
-        self.assertIn(f"showing last <b>{ARTIFACT_WRAPPER_TAIL_BYTES:,}</b> bytes", wrapper_html)
+        self.assertIn(f"Showing the last <b>{ARTIFACT_WRAPPER_TAIL_BYTES:,}</b> bytes", wrapper_html)
         self.assertIn("tail-end", wrapper_html)
         self.assertNotIn("prefix-start", wrapper_html)
 

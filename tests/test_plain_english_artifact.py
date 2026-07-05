@@ -33,8 +33,8 @@ class PlainEnglishArtifactTests(unittest.TestCase):
             "status": status,
             "attempts": attempts,
             "elapsed_s": elapsed_s,
-            "check": "echo ok",
-            "spec_short": "do the work",
+            "check": "echo ok && echo rc=1",
+            "spec_short": "manifest worktree orchestrator engine spec check",
             "check_timed_out": check_timed_out,
         }
 
@@ -63,17 +63,6 @@ class PlainEnglishArtifactTests(unittest.TestCase):
             "tasks": tasks,
         }
 
-    def plain_sections(self, html: str, first_heading_id: str = "right-now-heading") -> str:
-        match = re.search(
-            rf'<section aria-labelledby="{first_heading_id}">(?P<first>.*?)</section>\s*'
-            r'<section aria-labelledby="status-updates-heading">(?P<updates>.*?)</section>',
-            html,
-            flags=re.S,
-        )
-        self.assertIsNotNone(match)
-        assert match is not None
-        return match.group("first") + match.group("updates")
-
     def test_live_briefing_counts_mixed_state(self) -> None:
         html = render_status_html(
             self.state(
@@ -87,12 +76,44 @@ class PlainEnglishArtifactTests(unittest.TestCase):
             renderer=self.renderer,
         )
 
-        self.assertIn("Right now", html)
-        self.assertIn("Ringer is working on 4 tasks for claude-code-mbp.", html)
+        self.assertIn("Ringer is working on 4 tasks.", html)
         self.assertIn(
-            "1 passed its check, 1 failed its check, 1 is running, 1 is waiting",
+            "1 finished cleanly, 1 failed, 1 is running, 1 is waiting",
             html,
         )
+
+    def test_briefing_is_first_content_after_run_name(self) -> None:
+        html = render_status_html(
+            self.state([self.task("A-pass", "pass", attempts=1, elapsed_s=5)]),
+            renderer=self.renderer,
+        )
+
+        self.assertRegex(
+            html,
+            r'<div class="wrap">\s*<header class="page-head">\s*'
+            r'<p class="eyebrow"[^>]*>Plain English Run</p>\s*'
+            r'<p id="right-now-heading" class="briefing">',
+        )
+
+    def test_segmented_bar_has_one_segment_per_task_with_state_class(self) -> None:
+        html = render_status_html(
+            self.state(
+                [
+                    self.task("A-pass", "pass"),
+                    self.task("B-fail", "fail"),
+                    self.task("C-running", "running"),
+                    self.task("D-waiting", "queued"),
+                ]
+            ),
+            renderer=self.renderer,
+        )
+
+        self.assertEqual(4, html.count('class="progress-segment '))
+        self.assertEqual(1, html.count('class="progress-segment state-pass"'))
+        self.assertEqual(1, html.count('class="progress-segment state-fail"'))
+        self.assertEqual(1, html.count('class="progress-segment state-running"'))
+        self.assertEqual(1, html.count('class="progress-segment state-waiting"'))
+        self.assertIn("1 finished &middot; 1 running &middot; 1 waiting &middot; 1 failed", html)
 
     def test_status_change_adds_timestamped_update(self) -> None:
         render_status_html(self.state([self.task("A-mock-engine", "queued")]), renderer=self.renderer)
@@ -102,7 +123,7 @@ class PlainEnglishArtifactTests(unittest.TestCase):
             renderer=self.renderer,
         )
 
-        self.assertRegex(html, r"<time>\d{2}:\d{2}:\d{2}</time>A-mock-engine started")
+        self.assertRegex(html, r'<time class="mono">\d{2}:\d{2}:\d{2}</time><span>A-mock-engine started</span>')
 
     def test_retry_and_second_try_updates(self) -> None:
         render_status_html(
@@ -115,7 +136,7 @@ class PlainEnglishArtifactTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "C-nudge-hooks failed its check — sending it back to try again",
+            "C-nudge-hooks did not finish cleanly — trying again",
             retry_html,
         )
 
@@ -126,39 +147,67 @@ class PlainEnglishArtifactTests(unittest.TestCase):
 
         self.assertIn("C-nudge-hooks passed on the second try", pass_html)
         self.assertIn(
-            "C-nudge-hooks failed its check — sending it back to try again",
+            "C-nudge-hooks did not finish cleanly — trying again",
             pass_html,
         )
 
-    def test_briefing_and_updates_do_not_use_banned_jargon(self) -> None:
-        html = render_status_html(
+    def test_full_live_and_final_pages_do_not_use_banned_language(self) -> None:
+        tasks = [
+            self.task("B-mock-engine", "pass", attempts=1, elapsed_s=330),
+            self.task("C-nudge-hooks", "retrying", attempts=1, elapsed_s=22),
+        ]
+        live_html = render_status_html(
             self.state(
-                [
-                    self.task("B-mock-engine", "pass", attempts=1, elapsed_s=330),
-                    self.task("C-nudge-hooks", "retrying", attempts=1, elapsed_s=22),
-                ]
+                tasks,
             ),
             renderer=self.renderer,
         )
-        plain_html = self.plain_sections(html).lower()
+        final_html = render_final_report_html(self.state(tasks, finished=True), renderer=self.renderer)
 
-        for banned in ("manifest", "worktree", "orchestrator", "rc=", "exit code"):
-            self.assertNotIn(banned, plain_html)
+        for html in (live_html, final_html):
+            scanned = html.lower()
+            for task in tasks:
+                scanned = scanned.replace(str(task["key"]).lower(), "")
+            for banned in ("manifest", "worktree", "orchestrator", "rc=", "exit code", "engine", "spec"):
+                self.assertNotIn(banned, scanned)
+            self.assertIsNone(re.search(r"\bcheck\b", scanned))
 
-    def test_technical_table_is_inside_details(self) -> None:
-        html = render_status_html(
+    def test_technical_details_and_raw_table_are_absent(self) -> None:
+        live_html = render_status_html(
             self.state([self.task("B-mock-engine", "pass", attempts=1, elapsed_s=330)]),
             renderer=self.renderer,
         )
+        final_html = render_final_report_html(
+            self.state([self.task("B-mock-engine", "pass", attempts=1, elapsed_s=330)], finished=True),
+            renderer=self.renderer,
+        )
 
-        self.assertIn('<details class="technical-detail">', html)
-        self.assertIn("<summary>Technical detail</summary>", html)
-        details_start = html.index('<details class="technical-detail">')
-        table_start = html.index("<table>")
-        details_end = html.index("</details>", details_start)
-        self.assertGreater(table_start, details_start)
-        self.assertLess(table_start, details_end)
-        self.assertIn("rc=", html[details_start:details_end])
+        for html in (live_html, final_html):
+            self.assertNotIn("Technical detail", html)
+            self.assertNotIn("<details", html)
+            self.assertNotIn("<table", html)
+
+    def test_meta_refresh_is_live_only(self) -> None:
+        live_html = render_status_html(
+            self.state([self.task("A", "running", attempts=1)]),
+            renderer=self.renderer,
+        )
+        final_html = render_final_report_html(
+            self.state([self.task("A", "pass", attempts=1)], finished=True),
+            renderer=self.renderer,
+        )
+
+        self.assertIn('<meta http-equiv="refresh" content="2">', live_html)
+        self.assertNotIn('http-equiv="refresh"', final_html)
+
+    def test_theme_override_blocks_are_present(self) -> None:
+        html = render_status_html(
+            self.state([self.task("A", "running", attempts=1)]),
+            renderer=self.renderer,
+        )
+
+        self.assertIn(":root[data-theme=dark]", html)
+        self.assertIn(":root[data-theme=light]", html)
 
     def test_final_report_all_pass_briefing(self) -> None:
         html = render_final_report_html(
@@ -175,12 +224,11 @@ class PlainEnglishArtifactTests(unittest.TestCase):
             renderer=self.renderer,
         )
 
-        self.assertIn("What happened", html)
         self.assertIn(
-            "Ringer finished 4 tasks in 5m 30s. All 4 passed their checks.",
+            "Ringer finished 4 tasks in 5m 30s. All 4 finished cleanly.",
             html,
         )
-        self.assertIn('<details class="technical-detail" open>', html)
+        self.assertIn("Finished ", html)
 
 
 if __name__ == "__main__":
