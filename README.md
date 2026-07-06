@@ -231,6 +231,44 @@ Rows that match nothing keep their old `task_type` (empty); rows whose run-state
 
 `docs/MODEL-NOTES.md` is where the human-readable judgment lives on top of these numbers — the scoreboard tells you the pass rates; the notes tell you why a model shines or chokes on a given task shape.
 
+### Evidence-based routing
+
+The scoreboard only knows models you've already run. To reason about models you *haven't* tried yet, Ringer keeps a local snapshot of the OpenRouter catalog and a change log alongside the runs log:
+
+```bash
+./ringer.py catalog                  # fetch/refresh ~/.ringer/openrouter-catalog.json
+```
+
+| Flag | What it does |
+|---|---|
+| `--refresh` | Force a re-fetch even if the snapshot is fresh |
+| `--source URL_OR_PATH` | Pull from a non-default URL or local file instead of the live OpenRouter API |
+| `--file PATH` | Read a catalog document you already have on disk, no network |
+| `--free` | Filter to models with a $0 price — promo models included |
+| `--changes` | Print the recorded add/remove/price_change/went_free/went_paid events from `.changes.jsonl` |
+| `--json` | Emit the snapshot (or, with `--changes`, the event log) as JSON for piping |
+
+The snapshot lives at `~/.ringer/openrouter-catalog.json`; the change log sits beside it as `~/.ringer/openrouter-catalog.changes.jsonl`, appending one row per added, removed, price-changed, went-free, or went-paid event between snapshots. Free promos get their own call-out (`went_free`) because a temporarily-free model is a zero-cost experiment — the cheapest way to audition a new model is to catch it while someone else is paying for it.
+
+Catalog fetches are throttled to once per 24 hours. A `run` triggers that refresh in the background on its way up; it never blocks or fails a run — if the fetch is slow or the network is down, Ringer carries on with the snapshot it has. The throttle and the auto-refresh-on-run are both documented in `./ringer.py run --help` and can be turned off there.
+
+Once you have a catalog and a log, `models --explore` joins them into a routing recommendation:
+
+```bash
+./ringer.py models --explore                 # tiers across all task types
+./ringer.py models --explore --task-type docs # tiers for one task shape
+```
+
+Models with local evidence are sorted into tiers:
+
+- **proven** — 3+ tasks of this `task_type` logged, with `first_try_pass_rate >= 0.67`. The lane you trust with heavy work.
+- **probation** — some attempts logged but not enough volume or not enough first-try passes. Use it; don't lean on it.
+- **untested** — nothing in the log yet. Pulled from the catalog: text→text, 32k+ context window, up to 10 candidates, FREE models first then cheapest. These are your audition queue.
+
+The promotion ladder is the point. A model enters as **untested**. You spend a small slice of suitable runs — about one task per run — auditioning cheap or free candidates on small, low-stakes work where the executed check is strong and the single retry absorbs the failure: docs sweeps, mechanical edits, persona reviews. While evidence accumulates the model sits on **probation**. At 3+ tasks with `first_try_pass_rate >= 0.67` it's **proven** for that task type and earns a lane on the heavy work. The recommendation flow is the same one this ladder implies: exploit proven models for the load-bearing tasks, and keep spending that small slice auditioning untested candidates so the bench refills itself.
+
+The per-user philosophy, stated plainly: every user's workload is different, so the scoreboard learns what works for *your* tasks on *your* machine. A model that's proven in someone else's log is untested in yours until you've run it. The numbers are not portable between users, and the routing recommendations get personal as the log grows — which is exactly why the catalog and the change log stay local and the explore tiers are computed from your own `runs.jsonl`, not from anyone's aggregate.
+
 ## Hard-won invariants
 
 Four rules are baked into every worker invocation. They all cost us real debugging hours; you get them for free:

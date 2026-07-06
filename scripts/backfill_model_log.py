@@ -27,6 +27,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 from datetime import datetime, timezone
 
 
@@ -239,10 +240,26 @@ def main(argv: list[str] | None = None) -> int:
 
     if not dry_run:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        backup_path = f"{log_path}.bak-{stamp}"
+        backup_path = f"{log_path}.bak-{stamp}-{os.getpid()}"
+        suffix = 1
+        candidate = backup_path
+        while os.path.exists(candidate):
+            candidate = f"{backup_path}-{suffix}"
+            suffix += 1
+        backup_path = candidate
         shutil.copy2(log_path, backup_path)
-        with open(log_path, "w", encoding="utf-8") as fh:
-            fh.writelines(out_lines)
+        log_dir = os.path.dirname(os.path.abspath(log_path))
+        tmp_fd, tmp_path = tempfile.mkstemp(prefix=".backfill_", dir=log_dir)
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                fh.writelines(out_lines)
+            os.replace(tmp_path, log_path)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     print_summary(summary)
     return 0

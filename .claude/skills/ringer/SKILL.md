@@ -180,15 +180,36 @@ Pattern-selection judgment:
 
 ## Engine selection
 
-**The engine choice belongs to the human.** Before the FIRST run of a job,
-read what's actually wired up (`[engines.<name>]` blocks in
-`~/.config/ringer/config.toml`) and ask the user which model should do the
-typing — present the top 2–3 configured options with a one-line tradeoff
-each and a recommendation, e.g.: *"Codex (strongest all-rounder, runs on
-your existing plan — recommended for this job), GLM-5.2 via OpenCode
-(20–30x cheaper, great for volume work), or a mix — heavy tasks on Codex,
-mechanical ones on GLM?"* Honor their pick via the per-task `engine` field;
-don't re-ask every round of the same job unless the mix isn't working.
+**The engine choice belongs to the human — but the recommendation comes
+from THEIR evidence.** Before the FIRST run of a job: read what's wired up
+(`[engines.<name>]` blocks in `~/.config/ringer/config.toml`), run
+`./ringer.py models --task-type <this job's type>` for the local scoreboard,
+and glance at `./ringer.py catalog --changes` for anything newly free or
+newly cheap. Then ask the user which model should do the typing — top 2–3
+options with the NUMBERS in the pitch and a recommendation, e.g.: *"GLM is
+6/6 first-try on persona work here at ~2¢/task — recommended. Codex is also
+100% but ~8x the tokens. And kimi went free on OpenRouter yesterday — want
+it auditioning one of the small tasks?"* Honor their pick via the per-task
+`engine`/`model` fields; don't re-ask every round of the same job unless
+the mix isn't working. This is per-user by design: the scoreboard learns
+THIS user's workload — never import another machine's conclusions or
+recommend from a different user's numbers.
+
+**Explore or the scoreboard fossilizes.** Always recommending the proven
+pick means never learning a new one. In any run of 3+ tasks that has a
+low-stakes lane (docs sweeps, mechanical edits, persona reviews — strong
+executed check, retry to absorb failure), assign roughly ONE task to an
+exploration candidate from `./ringer.py models --explore --task-type <type>`
+(untested + cheap or free, text-capable, decent context). Free promos from
+`catalog --changes` jump the queue — a temporarily-free model is a zero-cost
+experiment. Never explore on time-critical work, never with more than a
+small slice of a batch, and name the experiment when presenting the engine
+ask so the human can veto it. Promotion ladder (computed by --explore):
+untested → probation (some evidence) → proven for a task_type (3+ tasks,
+first-try ≥ 0.67). Proven models earn bigger lanes in that type and an
+audition one rung up in adjacent types; repeated first-attempt failures end
+the audition — record the demotion in MODEL-NOTES so the next orchestrator
+doesn't re-run the experiment.
 
 **OpenCode is the harness; the model is a manifest field.** Unless a model
 ships its own first-class harness (Codex does), it runs through the

@@ -47,6 +47,20 @@ checks and raw logs support — no vibes, no worker self-reports.
   orchestrator integration review. Needle checks need an anti-hidden-text
   assertion or documented exceptions.
 
+- 2026-07-06 — OpenRouter catalog + explore suggester (catalog subcommand
+  with snapshot/changelog/free-detection, daemon auto-refresh, tiered
+  --explore; offline fixture-driven contract check): PASS attempt 1, 362s.
+  Follow-up sentinel-pricing fix (variable-pricing models): PASS attempt 1,
+  114s. With the verify-order fix landed, zero phantom retries across the
+  whole batch.
+- 2026-07-06 — adversarial review of the model-router stack (2,650-line
+  diff, structured report contract): PASS attempt 1, 176s — found a real
+  HIGH (--since window inflating first-try rates) plus 3 MEDIUMs, all
+  confirmed against the code. Then fixed all five review findings in one
+  batch (task-level --since, pricing transitions, event durability + flock,
+  unknown pricing, stderr notice) with test coverage: PASS attempt 1, 202s.
+  Review->fix roundtrip in codex's lane works end to end.
+
 ## glm-5.2 via opencode (`openrouter/z-ai/glm-5.2`)
 
 - The cheap-intelligence default (~$0.74/M in, $2.33/M out, 2026-07 —
@@ -75,6 +89,9 @@ checks and raw logs support — no vibes, no worker self-reports.
   manifests: passed attempt 2; attempt 1 was lost to the harness ordering
   bug, not model quality — the retry worker's log correctly diagnosed that
   harness bug unprompted, impressive debugging from the cheap lane.
+- 2026-07-06 — catalog/explore README section (flags, promotion ladder,
+  per-user framing): PASS attempt 1, ~21.5k tokens. Doc sections against a
+  grep-able content contract remain a safe glm lane.
 - 2026-07-06 — milk-crate demo, full run: 4 independent buyer-persona
   reviews (focus group) all passed attempt 1 (~15k tokens, ~2¢ each) with an
   explicit VERDICT-block contract — persona work is squarely in glm's zone.
@@ -90,6 +107,12 @@ checks and raw logs support — no vibes, no worker self-reports.
   failures fixed all 13 (~148k tok total, ~3¢). Page builds (about+faq;
   news index + 19 generated post routes via its own extraction script) and
   2 focus-group personas: all attempt 1. Fix batch attempt 1.
+- 2026-07-06 — invariants/file-I/O review lens on the same stack: PASS
+  attempt 1, 68k tokens — caught the non-atomic backfill rewrite (real data
+  loss risk) and the daemon stdout race; both confirmed. Then fixed the
+  backfill atomicity (tmp+os.replace, pid-stamped backups) attempt 1 with
+  the original behavioral grader unchanged. Structured review with an
+  explicit lens is now proven glm territory, not just probation.
 
 ## kimi-k2.7 via opencode (`openrouter/moonshotai/kimi-k2.7-code`)
 
@@ -120,6 +143,16 @@ checks and raw logs support — no vibes, no worker self-reports.
   Events/faq/contact fix batch attempt 1, but satisfied "editorial grid" with
   an EMPTY aside landmark — axe caught it (landmark-complementary-is-top-level).
   Persona work: good. Watch for letter-of-the-spec shortcuts on layout asks.
+
+## nemotron-3-super-120b (via opencode, `openrouter/nvidia/nemotron-3-super-120b-a12b:free`)
+
+- 2026-07-06 — AUDITION FAILED (exploration slot, $0 spent — free promo).
+  Task: fresh-eyes adversarial review of a 2,650-line diff with a structured
+  report contract. Failed both attempts on the same executed check: report
+  had the right sections and verdict but under 3 concrete code citations —
+  shallow engagement with the actual code, 212k tokens burned. Don't re-run
+  this audition on long structured code review; if it gets another slot,
+  try a shorter, more mechanical task first.
 
 ## Small / flash-class models
 
@@ -174,3 +207,7 @@ checks and raw logs support — no vibes, no worker self-reports.
   before blaming the model.
 - 2026-07-06 — opencode sqlite "database is locked" again with just 2
   simultaneous opencode spawns (page-news + page-about-faq); retry absorbed it.
+
+## codex (2026-07-06, bench-operator-proofing)
+- 8/8 code-feature tasks passed attempt 1 across 3 rounds (worktrees mode, Python harness refactor; 108k-406k tokens/task). Specs embedded the approved architecture doc + exact file ownership; checks built fresh uv venvs and ran the full pytest suite.
+- Lesson (check design, not model): all 3 post-integration bugs were invisible to the checks — a test that passed only because the worker's worktree lacked .env, a `--help`-only assertion missing a runtime importlib/sys.modules bug (py3.12 dataclasses), and bare console-script names failing outside activated venvs. Checks should exercise one real invocation from a cold shell, not just --help.

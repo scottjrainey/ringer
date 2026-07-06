@@ -30,6 +30,7 @@ import urllib.request
 import webbrowser
 from dataclasses import dataclass, field, replace as dataclass_replace
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from html import escape as html_escape
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -48,6 +49,9 @@ DEFAULT_TIMEOUT_S = 900
 CHECK_TIMEOUT_S = 60
 DEFAULT_DASHBOARD_PORT_BASE = 8787
 DEFAULT_HUD_PORT = 8700
+DEFAULT_CATALOG_SOURCE = "https://openrouter.ai/api/v1/models"
+CATALOG_AUTO_REFRESH_MAX_AGE_S = 24 * 60 * 60
+CATALOG_FETCH_TIMEOUT_S = 5
 DEFAULT_TOKEN_REGEX = r"tokens\s+used\s*:?\s*([0-9][0-9,]*)"
 ACTIVITY_TAIL_BYTES = 2048
 ACTIVITY_TEXT_LIMIT = 80
@@ -1198,6 +1202,565 @@ def ringer_home() -> Path:
     if value and value.strip():
         return Path(value).expanduser().resolve()
     return (Path.home() / STATE_DIR_NAME).resolve()
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def default_catalog_path() -> Path:
+    return ringer_home() / "openrouter-catalog.json"
+
+
+def catalog_changes_path(snapshot_path: Path) -> Path:
+    text = str(snapshot_path)
+    if text.endswith(".json"):
+        return Path(text[:-5] + ".changes.jsonl")
+    return snapshot_path.with_name(snapshot_path.name + ".changes.jsonl")
+
+
+def catalog_decimal(value: Any) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    try:
+        return Decimal(str(value).strip() or "0")
+    except (InvalidOperation, ValueError):
+        return Decimal("0")
+
+
+def catalog_decimal_or_none(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        return Decimal(text)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def catalog_per_m(value: Any) -> float:
+    return float(catalog_decimal(value) * Decimal("1000000"))
+
+
+def catalog_per_m_decimal(value: Decimal) -> float:
+    return float(value * Decimal("1000000"))
+
+
+def catalog_price_equal(left: Any, right: Any) -> bool:
+    return catalog_decimal(left) == catalog_decimal(right)
+
+
+def catalog_price_is_negative(value: Any) -> bool:
+    return catalog_decimal(value) < 0
+
+
+def normalize_catalog_model(raw: dict[str, Any], *, fetched_at: str) -> dict[str, Any]:
+    pricing = raw.get("pricing")
+    pricing_obj = pricing if isinstance(pricing, dict) else {}
+    architecture = raw.get("architecture")
+    architecture_obj = architecture if isinstance(architecture, dict) else {}
+    model_id = str(raw.get("id", "")).strip()
+    prompt_price = catalog_decimal_or_none(pricing_obj.get("prompt"))
+    completion_price = catalog_decimal_or_none(pricing_obj.get("completion"))
+    pricing_unknown = prompt_price is None or completion_price is None
+    variable_pricing = pricing_unknown or prompt_price < 0 or completion_price < 0
+    prompt_per_m = None if variable_pricing else catalog_per_m_decimal(prompt_price)
+    completion_per_m = None if variable_pricing else catalog_per_m_decimal(completion_price)
+    is_free = not variable_pricing and (
+        model_id.endswith(":free")
+        or (
+            prompt_price == 0
+            and completion_price == 0
+        )
+    )
+    if model_id.endswith(":free"):
+        is_free = True
+    context_length_raw = raw.get("context_length")
+    try:
+        context_length = int(context_length_raw)
+    except (TypeError, ValueError):
+        context_length = 0
+    return {
+        "id": model_id,
+        "name": str(raw.get("name", "")).strip() or model_id,
+        "context_length": context_length,
+        "modality": str(architecture_obj.get("modality", "")).strip(),
+        "pricing": dict(pricing_obj),
+        "prompt_per_m": prompt_per_m,
+        "completion_per_m": completion_per_m,
+        "variable_pricing": variable_pricing,
+        "pricing_unknown": pricing_unknown,
+        "free": is_free,
+        "fetched_at": fetched_at,
+    }
+
+
+def normalize_catalog_payload(payload: dict[str, Any], *, fetched_at: str) -> list[dict[str, Any]]:
+    data = payload.get("data")
+    if not isinstance(data, list):
+        raise ValueError("catalog source must have a JSON object with a data array")
+    models: list[dict[str, Any]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        model = normalize_catalog_model(item, fetched_at=fetched_at)
+        if model["id"]:
+            models.append(model)
+    return sorted(models, key=catalog_sort_key)
+
+
+def catalog_sort_key(model: dict[str, Any]) -> tuple[bool, float, str]:
+    variable_pricing = bool(model.get("variable_pricing"))
+    return (
+        variable_pricing,
+        float("inf")
+        if variable_pricing
+        else float(model.get("prompt_per_m") or 0) + float(model.get("completion_per_m") or 0),
+        str(model.get("id") or ""),
+    )
+
+
+def fetch_catalog_payload(source: str, *, timeout: float = CATALOG_FETCH_TIMEOUT_S) -> dict[str, Any]:
+    parsed = urllib.parse.urlparse(source)
+    if parsed.scheme in {"http", "https"}:
+        request = urllib.request.Request(source, headers={"User-Agent": "ringer.py"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    else:
+        payload = json.loads(Path(source).expanduser().read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("catalog source must be a JSON object")
+    return payload
+
+
+def load_catalog_snapshot(path: Path) -> list[dict[str, Any]]:
+    try:
+        data = json.loads(path.expanduser().read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    if isinstance(data, dict):
+        models = data.get("models")
+    else:
+        models = data
+    if not isinstance(models, list):
+        return []
+    return [item for item in models if isinstance(item, dict)]
+
+
+def catalog_event_model_details(model: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": model.get("name", ""),
+        "prompt_per_m": model.get("prompt_per_m", 0),
+        "completion_per_m": model.get("completion_per_m", 0),
+        "variable_pricing": bool(model.get("variable_pricing")),
+        "pricing_unknown": bool(model.get("pricing_unknown")),
+        "free": bool(model.get("free")),
+        "context_length": model.get("context_length", 0),
+        "modality": model.get("modality", ""),
+    }
+
+
+def diff_catalog_snapshots(
+    old_models: list[dict[str, Any]],
+    new_models: list[dict[str, Any]],
+    *,
+    ts: str,
+) -> list[dict[str, Any]]:
+    old_by_id = {str(model.get("id")): model for model in old_models if model.get("id")}
+    new_by_id = {str(model.get("id")): model for model in new_models if model.get("id")}
+    events: list[dict[str, Any]] = []
+
+    for model_id in sorted(new_by_id.keys() - old_by_id.keys()):
+        model = new_by_id[model_id]
+        events.append({"ts": ts, "kind": "added", "id": model_id, **catalog_event_model_details(model)})
+
+    for model_id in sorted(old_by_id.keys() - new_by_id.keys()):
+        model = old_by_id[model_id]
+        events.append({"ts": ts, "kind": "removed", "id": model_id, **catalog_event_model_details(model)})
+
+    for model_id in sorted(old_by_id.keys() & new_by_id.keys()):
+        old = old_by_id[model_id]
+        new = new_by_id[model_id]
+        old_prompt = old.get("prompt_per_m", 0)
+        new_prompt = new.get("prompt_per_m", 0)
+        old_completion = old.get("completion_per_m", 0)
+        new_completion = new.get("completion_per_m", 0)
+        old_free = bool(old.get("free"))
+        new_free = bool(new.get("free"))
+        old_variable = bool(old.get("variable_pricing"))
+        new_variable = bool(new.get("variable_pricing"))
+        if new_variable:
+            if not old_variable:
+                events.append(
+                    {
+                        "ts": ts,
+                        "kind": "pricing_variable",
+                        "id": model_id,
+                        "name": new.get("name", old.get("name", "")),
+                        "old_prompt_per_m": old_prompt,
+                        "new_prompt_per_m": new_prompt,
+                        "old_completion_per_m": old_completion,
+                        "new_completion_per_m": new_completion,
+                        "old_free": old_free,
+                        "new_free": new_free,
+                    }
+                )
+            continue
+        if old_variable:
+            events.append(
+                {
+                    "ts": ts,
+                    "kind": "pricing_fixed",
+                    "id": model_id,
+                    "name": new.get("name", old.get("name", "")),
+                    "old_prompt_per_m": old_prompt,
+                    "new_prompt_per_m": new_prompt,
+                    "old_completion_per_m": old_completion,
+                    "new_completion_per_m": new_completion,
+                    "old_free": old_free,
+                    "new_free": new_free,
+                }
+            )
+            if new_free:
+                events.append(
+                    {
+                        "ts": ts,
+                        "kind": "went_free",
+                        "id": model_id,
+                        "name": new.get("name", old.get("name", "")),
+                        "old_prompt_per_m": old_prompt,
+                        "new_prompt_per_m": new_prompt,
+                        "old_completion_per_m": old_completion,
+                        "new_completion_per_m": new_completion,
+                    }
+                )
+            continue
+        price_changed = old_prompt != new_prompt or old_completion != new_completion
+        if price_changed:
+            events.append(
+                {
+                    "ts": ts,
+                    "kind": "price_change",
+                    "id": model_id,
+                    "name": new.get("name", old.get("name", "")),
+                    "old_prompt_per_m": old_prompt,
+                    "new_prompt_per_m": new_prompt,
+                    "old_completion_per_m": old_completion,
+                    "new_completion_per_m": new_completion,
+                    "old_free": old_free,
+                    "new_free": new_free,
+                }
+            )
+        if old_free != new_free:
+            events.append(
+                {
+                    "ts": ts,
+                    "kind": "went_free" if new_free else "went_paid",
+                    "id": model_id,
+                    "name": new.get("name", old.get("name", "")),
+                    "old_prompt_per_m": old_prompt,
+                    "new_prompt_per_m": new_prompt,
+                    "old_completion_per_m": old_completion,
+                    "new_completion_per_m": new_completion,
+                }
+            )
+    return events
+
+
+@dataclass(frozen=True)
+class CatalogRefreshResult:
+    path: Path
+    changes_path: Path
+    models: list[dict[str, Any]]
+    events: list[dict[str, Any]]
+
+
+def append_catalog_events(path: Path, events: list[dict[str, Any]]) -> None:
+    if not events:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        for event in events:
+            fh.write(json.dumps(event, sort_keys=True) + "\n")
+
+
+@contextlib.contextmanager
+def catalog_refresh_lock(snapshot_path: Path) -> Iterable[None]:
+    lock_path = snapshot_path.with_name(snapshot_path.name + ".lock")
+    try:
+        import fcntl
+    except Exception:
+        yield
+        return
+    fh = None
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fh = lock_path.open("a", encoding="utf-8")
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+    except Exception:
+        if fh is not None:
+            with contextlib.suppress(Exception):
+                fh.close()
+        yield
+        return
+    try:
+        yield
+    finally:
+        with contextlib.suppress(Exception):
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        fh.close()
+
+
+def refresh_openrouter_catalog(
+    snapshot_path: Path,
+    *,
+    source: str = DEFAULT_CATALOG_SOURCE,
+    timeout: float = CATALOG_FETCH_TIMEOUT_S,
+) -> CatalogRefreshResult:
+    snapshot_path = snapshot_path.expanduser().resolve()
+    changes_path = catalog_changes_path(snapshot_path)
+    with catalog_refresh_lock(snapshot_path):
+        ts = utc_now_iso()
+        old_models = load_catalog_snapshot(snapshot_path)
+        payload = fetch_catalog_payload(source, timeout=timeout)
+        new_models = normalize_catalog_payload(payload, fetched_at=ts)
+        events = diff_catalog_snapshots(old_models, new_models, ts=ts)
+        snapshot = {"fetched_at": ts, "models": new_models}
+        append_catalog_events(changes_path, events)
+        # Append events before replacing the snapshot: a crash here can duplicate
+        # events on the next refresh, but duplicated events are recoverable and
+        # silently lost catalog changes are not.
+        atomic_write_json(snapshot_path, snapshot)
+    return CatalogRefreshResult(
+        path=snapshot_path,
+        changes_path=changes_path,
+        models=new_models,
+        events=events,
+    )
+
+
+def format_catalog_price(value: Any, *, variable: bool = False) -> str:
+    if variable or value is None:
+        return "var"
+    amount = float(value or 0)
+    if amount == 0:
+        return "0"
+    if amount < 0.01:
+        return f"{amount:.4f}".rstrip("0").rstrip(".")
+    return f"{amount:.2f}".rstrip("0").rstrip(".")
+
+
+def print_catalog_table(models: list[dict[str, Any]]) -> None:
+    header = f"{'id':<48} {'$/M in':>9} {'$/M out':>9} {'ctx':>8} {'FREE':<4}"
+    print(header)
+    print("-" * len(header))
+    for model in sorted(models, key=catalog_sort_key):
+        variable_pricing = bool(model.get("variable_pricing"))
+        marker = "FREE" if model.get("free") else ""
+        print(
+            f"{shorten(str(model.get('id', '')), 48):<48} "
+            f"{format_catalog_price(model.get('prompt_per_m'), variable=variable_pricing):>9} "
+            f"{format_catalog_price(model.get('completion_per_m'), variable=variable_pricing):>9} "
+            f"{int(model.get('context_length') or 0):>8} {marker:<4}"
+        )
+
+
+def read_catalog_events(path: Path, *, limit: int = 20) -> list[dict[str, Any]]:
+    try:
+        lines = path.expanduser().read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return []
+    events: list[dict[str, Any]] = []
+    for line in reversed(lines):
+        if len(events) >= limit:
+            break
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events
+
+
+def describe_catalog_event(event: dict[str, Any]) -> str:
+    kind = str(event.get("kind", "event"))
+    model_id = str(event.get("id", ""))
+    ts = str(event.get("ts", ""))
+    if kind == "price_change":
+        return (
+            f"{ts} {model_id} price_change: "
+            f"in {format_catalog_price(event.get('old_prompt_per_m'))}"
+            f" -> {format_catalog_price(event.get('new_prompt_per_m'))}, "
+            f"out {format_catalog_price(event.get('old_completion_per_m'))}"
+            f" -> {format_catalog_price(event.get('new_completion_per_m'))}"
+        )
+    if kind in {"went_free", "went_paid"}:
+        return f"{ts} {model_id} {kind}"
+    if kind == "pricing_variable":
+        return f"{ts} {model_id} pricing_variable"
+    if kind == "pricing_fixed":
+        return (
+            f"{ts} {model_id} pricing_fixed: "
+            f"in {format_catalog_price(event.get('new_prompt_per_m'))}, "
+            f"out {format_catalog_price(event.get('new_completion_per_m'))}"
+        )
+    if kind == "added":
+        marker = " FREE" if event.get("free") else ""
+        return f"{ts} {model_id} added{marker}"
+    if kind == "removed":
+        return f"{ts} {model_id} removed"
+    return f"{ts} {model_id} {kind}"
+
+
+def run_catalog_command(args: argparse.Namespace) -> int:
+    snapshot_path = (args.file or default_catalog_path()).expanduser().resolve()
+    if args.refresh:
+        models = refresh_openrouter_catalog(
+            snapshot_path,
+            source=args.source or DEFAULT_CATALOG_SOURCE,
+        ).models
+    else:
+        models = load_catalog_snapshot(snapshot_path)
+
+    if args.changes:
+        for event in read_catalog_events(catalog_changes_path(snapshot_path)):
+            print(describe_catalog_event(event))
+        return 0
+
+    if args.free:
+        models = [model for model in models if model.get("free")]
+
+    if args.json:
+        print(json.dumps(sorted(models, key=catalog_sort_key)))
+        return 0
+
+    if not models:
+        print(f"No catalog snapshot at {snapshot_path}. Run './ringer.py catalog --refresh'.", file=sys.stderr)
+        return 1
+    print_catalog_table(models)
+    return 0
+
+
+def catalog_snapshot_is_fresh(
+    snapshot_path: Path,
+    *,
+    max_age_s: int = CATALOG_AUTO_REFRESH_MAX_AGE_S,
+    now: float | None = None,
+) -> bool:
+    try:
+        mtime = snapshot_path.expanduser().stat().st_mtime
+    except OSError:
+        return False
+    return ((time.time() if now is None else now) - mtime) < max_age_s
+
+
+def start_catalog_auto_refresh(
+    *,
+    snapshot_path: Path | None = None,
+    source: str = DEFAULT_CATALOG_SOURCE,
+    print_notice: bool = True,
+) -> threading.Thread | None:
+    try:
+        if os.environ.get("RINGER_NO_CATALOG_REFRESH") == "1":
+            return None
+        path = (snapshot_path or default_catalog_path()).expanduser().resolve()
+        if catalog_snapshot_is_fresh(path):
+            return None
+    except Exception:
+        return None
+
+    def worker() -> None:
+        try:
+            result = refresh_openrouter_catalog(path, source=source, timeout=CATALOG_FETCH_TIMEOUT_S)
+            went_free = [event for event in result.events if event.get("kind") == "went_free"]
+            if print_notice and went_free:
+                sample = ", ".join(str(event.get("id")) for event in went_free[:3])
+                extra = "" if len(went_free) <= 3 else f" and {len(went_free) - 3} more"
+                print(f"Catalog refresh: model went FREE: {sample}{extra}", file=sys.stderr, flush=True)
+        except Exception:
+            pass
+
+    try:
+        thread = threading.Thread(target=worker, name="ringer-catalog-refresh", daemon=True)
+        thread.start()
+        return thread
+    except Exception:
+        return None
+
+
+def proven_model_group(group: dict[str, Any]) -> bool:
+    return int(group.get("tasks") or 0) >= 3 and float(group.get("first_try_pass_rate") or 0) >= 0.67
+
+
+def catalog_model_is_text_candidate(model: dict[str, Any]) -> bool:
+    try:
+        context_length = int(model.get("context_length") or 0)
+    except (TypeError, ValueError):
+        context_length = 0
+    return (
+        not bool(model.get("variable_pricing"))
+        and str(model.get("modality", "")).strip().lower() == "text->text"
+        and context_length >= 32000
+    )
+
+
+def catalog_explore_candidates(
+    catalog_models: list[dict[str, Any]],
+    *,
+    tested_models: set[str],
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    candidates = [
+        model
+        for model in catalog_models
+        if str(model.get("id", "")) not in tested_models and catalog_model_is_text_candidate(model)
+    ]
+    return sorted(
+        candidates,
+        key=lambda model: (
+            not bool(model.get("free")),
+            float(model.get("prompt_per_m") or 0) + float(model.get("completion_per_m") or 0),
+            str(model.get("id") or ""),
+        ),
+    )[:limit]
+
+
+def print_model_explore(
+    *,
+    log_path: Path,
+    rows_read: int,
+    skipped: int,
+    groups: list[dict[str, Any]],
+    catalog_path: Path,
+    catalog_models: list[dict[str, Any]],
+) -> None:
+    print(f"TIERS from {log_path} ({rows_read} rows, {skipped} skipped lines)")
+    if not groups:
+        print("  no local evidence")
+    for group in groups:
+        label = "proven" if proven_model_group(group) else "probation"
+        print(
+            f"  {label:<9} {group['model']} "
+            f"task_type={group['task_type']} tasks={group['tasks']} "
+            f"first={group['first_try_pass_rate']:.2f} pass={group['pass_rate']:.2f}"
+        )
+
+    tested_models = {str(group.get("model")) for group in groups if group.get("model")}
+    candidates = catalog_explore_candidates(catalog_models, tested_models=tested_models)
+    print(f"CANDIDATES from {catalog_path}")
+    if not candidates:
+        print("  no untested text->text candidates with context >= 32000")
+    for model in candidates:
+        marker = " FREE" if model.get("free") else ""
+        print(
+            f"  untested  {model['id']} "
+            f"in={format_catalog_price(model.get('prompt_per_m'))}/M "
+            f"out={format_catalog_price(model.get('completion_per_m'))}/M "
+            f"ctx={int(model.get('context_length') or 0)}{marker}"
+        )
 
 
 def active_runs_path() -> Path:
@@ -3665,13 +4228,32 @@ def read_model_log_rows(
             if not isinstance(row, dict):
                 skipped += 1
                 continue
-            if since is not None:
-                logged_date = parse_log_date(row.get("logged_at"))
-                if not logged_date or logged_date < since:
-                    continue
             if engine is not None and model_log_text(row.get("worker_engine")) != engine:
                 continue
             rows.append(row)
+    if since is not None:
+        task_rows_by_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in rows:
+            run_id = model_log_text(row.get("run_id"))
+            task_key = model_log_text(row.get("task_key"))
+            task_rows_by_key.setdefault((run_id, task_key), []).append(row)
+        selected_keys: set[tuple[str, str]] = set()
+        for key, task_rows in task_rows_by_key.items():
+            ordered = sorted(
+                task_rows,
+                key=lambda row: (
+                    model_log_text(row.get("logged_at")),
+                    1 if model_log_row_is_retry(row) else 0,
+                ),
+            )
+            final_date = parse_log_date(ordered[-1].get("logged_at"))
+            if final_date and final_date >= since:
+                selected_keys.add(key)
+        rows = [
+            row
+            for row in rows
+            if (model_log_text(row.get("run_id")), model_log_text(row.get("task_key"))) in selected_keys
+        ]
     return rows, skipped
 
 
@@ -3805,6 +4387,18 @@ def run_models_command(config: AppConfig, args: argparse.Namespace) -> int:
     since = validate_since_date(args.since)
     rows, skipped = read_model_log_rows(log_path, since=since, engine=args.engine)
     groups = aggregate_model_log_rows(rows, task_type=args.task_type, model=args.model)
+    if args.explore:
+        catalog_path = (args.catalog_file or default_catalog_path()).expanduser().resolve()
+        catalog_models = load_catalog_snapshot(catalog_path)
+        print_model_explore(
+            log_path=log_path,
+            rows_read=len(rows),
+            skipped=skipped,
+            groups=groups,
+            catalog_path=catalog_path,
+            catalog_models=catalog_models,
+        )
+        return 0
     if args.json:
         print(json.dumps(groups))
     else:
@@ -5242,6 +5836,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--identity", help="orchestrator identity for HUD state and eval rows")
     run_parser.add_argument("--no-dashboard", action="store_true", help="disable live dashboard")
     run_parser.add_argument("--browser", action="store_true", help="open the dashboard in the browser instead of Ringside")
+    run_parser.epilog = "Set RINGER_NO_CATALOG_REFRESH=1 to skip the non-blocking OpenRouter catalog auto-refresh."
     run_parser.add_argument(
         "--no-artifact",
         action="store_true",
@@ -5264,7 +5859,17 @@ def build_parser() -> argparse.ArgumentParser:
     models_parser.add_argument("--model", help="only include one resolved model bucket")
     models_parser.add_argument("--engine", help="only include rows from one worker engine")
     models_parser.add_argument("--since", help="only include rows logged on or after YYYY-MM-DD")
+    models_parser.add_argument("--explore", action="store_true", help="show proven/probation tiers plus cheap untested catalog candidates")
+    models_parser.add_argument("--catalog-file", type=Path, help="path to local OpenRouter catalog snapshot")
     models_parser.add_argument("--json", action="store_true", help="print the scoreboard as JSON")
+
+    catalog_parser = subparsers.add_parser("catalog", help="show or refresh the local OpenRouter model catalog")
+    catalog_parser.add_argument("--refresh", action="store_true", help="fetch source and rewrite the local snapshot")
+    catalog_parser.add_argument("--source", help=f"OpenRouter models URL or fixture file (default: {DEFAULT_CATALOG_SOURCE})")
+    catalog_parser.add_argument("--file", type=Path, help="catalog snapshot path (default: ~/.ringer/openrouter-catalog.json)")
+    catalog_parser.add_argument("--free", action="store_true", help="show free models only")
+    catalog_parser.add_argument("--changes", action="store_true", help="show recent catalog changes newest first")
+    catalog_parser.add_argument("--json", action="store_true", help="print the model list as JSON and nothing else")
 
     demo_parser = subparsers.add_parser("demo", help="generate and run a 3-task toy manifest in /tmp")
     demo_parser.add_argument("--config", type=Path, default=argparse.SUPPRESS, help=argparse.SUPPRESS)
@@ -5308,6 +5913,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"lint: clean ({len(manifest.tasks)} tasks)")
             return 0
 
+        if args.command == "catalog":
+            return run_catalog_command(args)
+
         config = AppConfig.load(args.config)
         if args.command == "models":
             return run_models_command(config, args)
@@ -5343,6 +5951,8 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         preflight_engine_bins(manifest, config)
+        if args.command == "run":
+            start_catalog_auto_refresh()
         if dashboard_enabled and not args.browser:
             ensure_hud_running(config, open_browser=True)
         return asyncio.run(

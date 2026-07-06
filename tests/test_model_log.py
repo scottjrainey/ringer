@@ -274,6 +274,61 @@ class ModelLogTests(unittest.TestCase):
             self.assertEqual("(untyped)", untyped[0]["task_type"])
             self.assertEqual(1, untyped[0]["tasks"])
 
+    def test_since_selects_tasks_by_final_attempt_and_keeps_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "eval.jsonl"
+            rows = [
+                {
+                    "run_id": "rescue-run",
+                    "task_key": "task-a",
+                    "worker_engine": "opencode",
+                    "model": "openrouter/rescue",
+                    "task_type": "code-feature",
+                    "verdict": "FAIL",
+                    "duration_ms": 100,
+                    "worker_tokens": 10,
+                    "retry": False,
+                    "logged_at": "2026-07-01T23:59:00+00:00",
+                },
+                {
+                    "run_id": "rescue-run",
+                    "task_key": "task-a",
+                    "worker_engine": "opencode",
+                    "model": "openrouter/rescue",
+                    "task_type": "code-feature",
+                    "verdict": "PASS",
+                    "duration_ms": 200,
+                    "worker_tokens": 20,
+                    "retry": True,
+                    "logged_at": "2026-07-02T00:01:00+00:00",
+                },
+                {
+                    "run_id": "old-run",
+                    "task_key": "task-b",
+                    "worker_engine": "opencode",
+                    "model": "openrouter/rescue",
+                    "task_type": "code-feature",
+                    "verdict": "PASS",
+                    "duration_ms": 300,
+                    "worker_tokens": 30,
+                    "retry": False,
+                    "logged_at": "2026-07-01T20:00:00+00:00",
+                },
+            ]
+            path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+            read_rows, skipped = read_model_log_rows(path, since="2026-07-02")
+
+            self.assertEqual(0, skipped)
+            self.assertEqual(["rescue-run", "rescue-run"], [row["run_id"] for row in read_rows])
+            groups = aggregate_model_log_rows(read_rows)
+            self.assertEqual(1, len(groups))
+            group = groups[0]
+            self.assertEqual(1, group["tasks"])
+            self.assertEqual(2, group["attempts"])
+            self.assertEqual(0.0, group["first_try_pass_rate"])
+            self.assertEqual(1.0, group["pass_rate"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
