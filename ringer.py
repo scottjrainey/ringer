@@ -476,6 +476,8 @@ class Manifest:
         run_name = str(obj.get("run_name", "")).strip()
         if not run_name:
             raise ValueError("run_name is required")
+        if run_name == MODEL_SCOREBOARD_RUN_NAME:
+            raise ValueError("run_name model-scoreboard is reserved for the scoreboard page")
         workdir_raw = obj.get("workdir")
         if not workdir_raw:
             raise ValueError("workdir is required")
@@ -536,6 +538,8 @@ FILE_TEST_OPS = {"-e", "-f", "-s", "-d", "-r", "-w", "-x", "-L"}
 
 def lint_manifest(manifest: Manifest, *, include_model_log_nudges: bool = False) -> list[str]:
     findings: list[str] = []
+    if manifest.run_name == MODEL_SCOREBOARD_RUN_NAME:
+        findings.append("manifest: run_name model-scoreboard is reserved for the scoreboard page.")
 
     for task in manifest.tasks:
         if check_cannot_fail(task.check):
@@ -4383,7 +4387,7 @@ def parse_model_notes_sections(path: Path) -> dict[str, list[str]]:
     """Return dated bullet blocks keyed by the raw level-2 heading text."""
     try:
         lines = path.expanduser().read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError:
+    except (OSError, UnicodeDecodeError):
         return {}
     sections: dict[str, list[str]] = {}
     current_heading: str | None = None
@@ -4435,10 +4439,18 @@ def model_judgment_notes(model_id: str, notes_sections: dict[str, list[str]]) ->
     needle = normalize_notes_match_text(model_id)
     if not needle:
         return []
-    for heading, bullets in notes_sections.items():
-        if needle in normalize_notes_match_text(heading):
-            return bullets
-    return []
+    id_boundary = r"A-Za-z0-9._/:-"
+    needle_re = re.compile(rf"(?<![{id_boundary}]){re.escape(needle)}(?![{id_boundary}])")
+    matches: list[tuple[int, int, int, list[str]]] = []
+    for index, (heading, bullets) in enumerate(notes_sections.items()):
+        normalized_heading = normalize_notes_match_text(heading)
+        if not needle_re.search(normalized_heading):
+            continue
+        exact_score = 1 if normalized_heading == needle else 0
+        matches.append((exact_score, len(normalized_heading), -index, bullets))
+    if not matches:
+        return []
+    return max(matches, key=lambda item: (item[0], item[1], item[2]))[3]
 
 
 def render_notes_list(items: list[str]) -> str:
@@ -4471,13 +4483,11 @@ def catalog_models_by_id(catalog_models: list[dict[str, Any]]) -> dict[str, dict
 def model_scoreboard_tier(tasks: int) -> str:
     if tasks >= 3:
         return "proven"
-    if tasks > 0:
-        return "probation"
-    return "untested-with-rows"
+    return "probation"
 
 
 def model_scoreboard_tier_rank(tier: str) -> int:
-    return {"proven": 0, "probation": 1, "untested-with-rows": 2}.get(tier, 3)
+    return {"proven": 0, "probation": 1}.get(tier, 3)
 
 
 def aggregate_model_scoreboard_rows(
@@ -4595,6 +4605,8 @@ def estimated_task_cost(row: dict[str, Any], catalog_model: dict[str, Any] | Non
     median_tokens = row.get("median_tokens")
     if median_tokens is None or catalog_model is None or catalog_model.get("variable_pricing"):
         return None
+    if catalog_model.get("free"):
+        return 0.0
     try:
         tokens = float(median_tokens)
         prompt_per_m = float(catalog_model.get("prompt_per_m") or 0)
@@ -4661,6 +4673,8 @@ def catalog_cost_html(row: dict[str, Any], catalog_model: dict[str, Any] | None)
         return '<span class="cost-line muted">catalog missing</span>'
     if median_tokens is None:
         return '<span class="cost-line">included in plan</span>'
+    if catalog_model.get("free"):
+        return '<span class="flag free">FREE</span>'
     variable = bool(catalog_model.get("variable_pricing"))
     in_price = format_catalog_price(catalog_model.get("prompt_per_m"), variable=variable)
     out_price = format_catalog_price(catalog_model.get("completion_per_m"), variable=variable)
@@ -4960,7 +4974,7 @@ def render_model_scoreboard_html(
     {cards}
   </section>
   <footer>
-    <span>Ranking sorts by evidence tier first: proven n>=3, then probation, then untested-with-rows; ties use first-try pass rate, pass rate, then lower estimated cost.</span>
+    <span>Ranking sorts by evidence tier first: proven n>=3, then probation; ties use first-try pass rate, pass rate, then lower estimated cost.</span>
     <span>Cost estimate assumes logged worker_tokens are split 50/50 between prompt and completion tokens, using the catalog $/M in/out blend.</span>
   </footer>
 </div>
@@ -5055,7 +5069,7 @@ def run_models_command(config: AppConfig, args: argparse.Namespace) -> int:
         notes_path = (getattr(args, "notes_file", None) or default_model_notes_path()).expanduser().resolve()
         scoreboard_rows = aggregate_model_scoreboard_rows(rows, task_type=args.task_type, model=args.model)
         explicit_path = None
-        if html_arg not in {None, ""} and not open_requested:
+        if html_arg not in {None, ""}:
             explicit_path = Path(str(html_arg))
         page_path = write_model_scoreboard_html(
             config,

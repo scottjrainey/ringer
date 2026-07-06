@@ -9,17 +9,22 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import ringer  # noqa: E402
 from ringer import (  # noqa: E402
     AppConfig,
     ArtifactConfig,
     EvalConfig,
+    Manifest,
+    TaskSpec,
     artifact_library_path,
     artifact_live_path,
+    lint_manifest,
     model_judgment_notes,
     parse_model_notes_sections,
     run_models_command,
@@ -211,7 +216,7 @@ class ScoreboardPageTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def args(self, *, html: str | None = None) -> argparse.Namespace:
+    def args(self, *, html: str | None = None, open: bool = False) -> argparse.Namespace:
         return argparse.Namespace(
             log=self.log_path,
             task_type=None,
@@ -222,7 +227,7 @@ class ScoreboardPageTests(unittest.TestCase):
             catalog_file=self.catalog_path,
             notes_file=self.notes_path,
             html=html,
-            open=False,
+            open=open,
             json=False,
         )
 
@@ -244,6 +249,7 @@ class ScoreboardPageTests(unittest.TestCase):
         self.assertIn("probation", html)
         self.assertIn("n=20", html)
         self.assertIn("FREE", html)
+        self.assertNotIn("$0/task", html)
         self.assertIn("steady code-feature performance across a larger sample", html)
         self.assertIn("Continuation line kept with the dated bullet.", html)
         self.assertIn("no judgment notes yet", html)
@@ -297,6 +303,18 @@ class ScoreboardPageTests(unittest.TestCase):
         self.assertTrue(html_path.exists())
         self.assertFalse(artifact_library_path(self.config.state_dir).exists())
 
+    def test_html_path_with_open_writes_and_opens_explicit_path_without_library(self) -> None:
+        html_path = self.root / "custom-open.html"
+        out = io.StringIO()
+        with mock.patch.object(ringer, "open_in_browser") as open_in_browser:
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(0, run_models_command(self.config, self.args(html=str(html_path), open=True)))
+
+        self.assertEqual(str(html_path.resolve()) + "\n", out.getvalue())
+        self.assertTrue(html_path.exists())
+        self.assertFalse(artifact_library_path(self.config.state_dir).exists())
+        open_in_browser.assert_called_once_with(ringer.file_href(html_path.resolve()))
+
     def test_html_without_path_writes_live_artifact_library_entry(self) -> None:
         out = io.StringIO()
         args = self.args(html="")
@@ -324,6 +342,71 @@ class ScoreboardPageTests(unittest.TestCase):
         self.assertIn("steady code-feature performance", proven[0])
         self.assertIn("Continuation line kept", proven[0])
         self.assertEqual([], model_judgment_notes("openrouter/missing", sections))
+
+    def test_notes_matching_uses_id_boundaries_and_best_heading(self) -> None:
+        notes_path = self.root / "MODEL-NOTES-boundaries.md"
+        notes_path.write_text(
+            """# Notes
+
+## gpt-4o
+
+- 2026-07-06 - four-o note.
+
+## runner lane (`gpt-4`)
+
+- 2026-07-06 - generic four note.
+
+## gpt-4
+
+- 2026-07-06 - exact four note.
+""",
+            encoding="utf-8",
+        )
+        sections = parse_model_notes_sections(notes_path)
+
+        gpt4_notes = model_judgment_notes("gpt-4", sections)
+        gpt4o_notes = model_judgment_notes("gpt-4o", sections)
+
+        self.assertEqual(1, len(gpt4_notes))
+        self.assertIn("exact four note", gpt4_notes[0])
+        self.assertNotIn("four-o note", gpt4_notes[0])
+        self.assertEqual(1, len(gpt4o_notes))
+        self.assertIn("four-o note", gpt4o_notes[0])
+        self.assertNotIn("exact four note", gpt4o_notes[0])
+
+    def test_notes_parser_returns_empty_for_directory_path(self) -> None:
+        self.assertEqual({}, parse_model_notes_sections(self.root))
+
+    def test_manifest_rejects_reserved_scoreboard_run_name_and_lints_it(self) -> None:
+        task_obj = {
+            "key": "one",
+            "spec": "Create the requested artifact, keep the work scoped, and write a clear verification output.",
+            "check": "test -s output.txt",
+            "expect_files": ["output.txt"],
+            "verified": "output.txt exists",
+        }
+        with self.assertRaisesRegex(ValueError, "run_name model-scoreboard is reserved for the scoreboard page"):
+            Manifest.from_obj(
+                {
+                    "run_name": "model-scoreboard",
+                    "workdir": str(self.root / "work"),
+                    "max_parallel": 1,
+                    "tasks": [task_obj],
+                }
+            )
+
+        manifest = Manifest(
+            run_name="model-scoreboard",
+            workdir=self.root / "work",
+            max_parallel=1,
+            worktrees=False,
+            repo=None,
+            tasks=(TaskSpec.from_obj(task_obj),),
+        )
+        self.assertIn(
+            "manifest: run_name model-scoreboard is reserved for the scoreboard page.",
+            lint_manifest(manifest),
+        )
 
 
 if __name__ == "__main__":
