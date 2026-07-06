@@ -156,6 +156,18 @@
       padding: clamp(18px, 3vw, 28px) clamp(12px, 2vw, 22px) clamp(20px, 3vw, 30px);
       border-bottom: 1px solid var(--hairline);
     }
+    .agents { margin-top: clamp(16px, 3vw, 28px); }
+    summary.run-head { cursor: pointer; list-style: none; }
+    summary.run-head::-webkit-details-marker { display: none; }
+    summary.run-head::before {
+      content: "▸";
+      color: var(--muted);
+      font-size: 11px;
+      margin-right: 2px;
+      transition: transform .15s ease;
+      display: inline-block;
+    }
+    details[open] > summary.run-head::before { transform: rotate(90deg); }
     .run-head {
       margin-bottom: clamp(12px, 2vw, 18px);
     }
@@ -424,17 +436,8 @@
       <time id="clock" class="clock mono"></time>
     </header>
 
-    <nav class="tabs" aria-label="Ringside tabs">
-      <button id="tab-live" class="tab" type="button" role="tab" aria-controls="live-panel" aria-selected="true">Live</button>
-      <button id="tab-artifacts" class="tab" type="button" role="tab" aria-controls="artifacts-panel" aria-selected="false">Artifacts</button>
-    </nav>
-
     <main>
-      <section id="live-panel" class="panel" role="tabpanel" aria-labelledby="tab-live">
-        <div id="runs"></div>
-      </section>
-
-      <section id="artifacts-panel" class="panel" role="tabpanel" aria-labelledby="tab-artifacts" hidden>
+      <section id="artifacts-panel" class="panel">
         <div class="artifact-layout">
           <section class="artifact-main" aria-label="Artifact preview">
             <div class="artifact-tools">
@@ -445,6 +448,9 @@
             <div id="frame-wrap" class="frame-wrap">
               <div class="artifact-error">No artifacts yet.</div>
             </div>
+            <section id="agents" class="agents" aria-label="Agents">
+              <div id="runs"></div>
+            </section>
           </section>
         </div>
       </section>
@@ -470,17 +476,15 @@
       artifactVersion: "live",
       frameKey: "",
       frameContent: "",
-      frameRequest: 0
+      frameRequest: 0,
+      rendering: false,
+      runOpen: {}
     };
 
     const els = {
       topDot: document.getElementById("top-dot"),
       reconnect: document.getElementById("reconnect"),
       clock: document.getElementById("clock"),
-      tabLive: document.getElementById("tab-live"),
-      tabArtifacts: document.getElementById("tab-artifacts"),
-      livePanel: document.getElementById("live-panel"),
-      artifactsPanel: document.getElementById("artifacts-panel"),
       runs: document.getElementById("runs"),
       artifactPicker: document.getElementById("artifact-picker"),
       artifactStatus: document.getElementById("artifact-status"),
@@ -616,18 +620,7 @@
       return tail.map(line => String(line).trim()).filter(Boolean).slice(-1)[0] || "";
     }
 
-    function setTab(tab, persist = true) {
-      state.tab = normalizeTab(tab) || "live";
-      if (persist) {
-        state.hasStoredTab = true;
-        localStorage.setItem(TAB_KEY, state.tab);
-      }
-      els.tabLive.setAttribute("aria-selected", String(state.tab === "live"));
-      els.tabArtifacts.setAttribute("aria-selected", String(state.tab === "artifacts"));
-      els.livePanel.hidden = state.tab !== "live";
-      els.artifactsPanel.hidden = state.tab !== "artifacts";
-      if (state.tab === "artifacts") loadArtifactFrame(false);
-    }
+    function setTab(_tab, _persist) { /* unified page — tabs removed */ }
 
     function preserveScroll(mutate) {
       const scroller = document.scrollingElement || document.documentElement;
@@ -640,7 +633,6 @@
       const anyLive = state.runs.some(run => run.state === "live");
       els.topDot.classList.toggle("live", anyLive);
       els.reconnect.hidden = !(state.runError || state.libraryError);
-      if (!state.hasStoredTab && anyLive && state.tab !== "live") setTab("live", false);
     }
 
     function renderLive() {
@@ -650,16 +642,31 @@
         empty.className = "empty";
         empty.textContent = "Nothing has run yet. Start something with: ./ringer.py run manifest.json";
         fragment.appendChild(empty);
+        state.rendering = true;
         preserveScroll(() => { els.runs.replaceChildren(fragment); });
+        state.rendering = false;
         syncLogPolling();
         return;
       }
 
-      state.runs.forEach((run, runIndex) => {
-        const section = document.createElement("section");
+      const selectedName = state.artifactName;
+      const visibleRuns = selectedName ? state.runs.filter(run => run.run_name === selectedName) : state.runs;
+      if (!visibleRuns.length) {
+        const note = document.createElement("p");
+        note.className = "empty-note";
+        note.textContent = "No agent activity recorded for this artifact yet.";
+        fragment.appendChild(note);
+      }
+      visibleRuns.forEach((run, runIndex) => {
+        const section = document.createElement("details");
         section.className = `run ${run.state}`;
+        const preferred = state.runOpen[run.__id];
+        section.open = preferred !== undefined ? preferred : (run.state === "live" || runIndex === 0);
+        section.addEventListener("toggle", () => {
+          if (!state.rendering) state.runOpen[run.__id] = section.open;
+        });
 
-        const head = document.createElement("header");
+        const head = document.createElement("summary");
         head.className = "corner run-head";
         const dot = document.createElement("span");
         dot.className = `live-dot ${run.state === "live" ? "live" : ""}`;
@@ -750,7 +757,9 @@
         if (runIndex < state.runs.length - 1) section.setAttribute("aria-label", run.run_name);
       });
 
+      state.rendering = true;
       preserveScroll(() => { els.runs.replaceChildren(fragment); });
+      state.rendering = false;
       syncLogPolling();
     }
 
@@ -1178,11 +1187,8 @@
       }
       renderTop();
       renderArtifacts();
-      if (state.tab === "artifacts") loadArtifactFrame(false);
+      loadArtifactFrame(false);
     }
-
-    els.tabLive.addEventListener("click", () => setTab("live"));
-    els.tabArtifacts.addEventListener("click", () => setTab("artifacts"));
     els.artifactVersion.addEventListener("change", () => {
       state.artifactVersion = els.artifactVersion.value || "live";
       state.frameKey = "";
@@ -1206,7 +1212,6 @@
     });
 
     tickClock();
-    setTab(state.tab, false);
     renderTop();
     renderLive();
     renderArtifacts();
