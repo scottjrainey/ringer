@@ -4248,6 +4248,36 @@ def build_worker_command(
     return command
 
 
+ENGINE_INSTALL_HINTS = {
+    "codex": "install it with `npm install -g @openai/codex` (or `brew install --cask codex`), then run `codex login`",
+    "opencode": "install it with `curl -fsSL https://opencode.ai/install | bash`, then run `opencode auth login`",
+}
+
+
+def preflight_engine_bins(manifest: Manifest, config: AppConfig) -> None:
+    """Fail before spawning anything if a worker binary is missing.
+
+    Without this, a fresh install dies mid-run with a bare
+    "worker spawn failed: [Errno 2]" in the task log — the least helpful
+    possible first experience.
+    """
+    for name in sorted({task.engine for task in manifest.tasks}):
+        engine = config.engines.get(name)
+        if engine is None:
+            continue  # validate_manifest_engines already rejected this
+        bin_path = engine.bin
+        if os.sep in bin_path:
+            found = Path(bin_path).expanduser()
+            missing = not (found.is_file() and os.access(found, os.X_OK))
+        else:
+            missing = shutil.which(bin_path) is None
+        if missing:
+            hint = ENGINE_INSTALL_HINTS.get(name, f"install it or fix engines.{name}.bin in config.toml")
+            raise ValueError(
+                f"engine '{name}' binary not found ({bin_path}) — {hint}"
+            )
+
+
 def validate_manifest_engines(manifest: Manifest, config: AppConfig) -> None:
     missing = sorted({task.engine for task in manifest.tasks if task.engine not in config.engines})
     if missing:
@@ -5043,6 +5073,7 @@ def main(argv: list[str] | None = None) -> int:
                 force_browser=args.browser,
             )
             return 0
+        preflight_engine_bins(manifest, config)
         if dashboard_enabled and not args.browser:
             ensure_hud_running(config, open_browser=True)
         return asyncio.run(

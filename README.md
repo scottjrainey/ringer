@@ -10,7 +10,7 @@ So split the roles. Your best model writes the specs and reviews the results. A 
 
 One problem: parallel agents lie. "Done" doesn't mean working. Ringer doesn't take the worker's word for anything — it **executes your check command** against the artifact. Pass or fail is decided by running the code, not by reading the agent's summary. Failures retry once with the failure context injected, and every attempt is logged so your setup gets measurably better over time.
 
-And because a swarm you can't see is a swarm you don't trust: **Ringside**, a native always-on-top HUD that shows every live swarm on your machine — who's running it, what each worker is doing, elapsed time, token burn — in real time.
+And because a swarm you can't see is a swarm you don't trust: **Ringside**, a local web page every run opens automatically, showing every live swarm on your machine — who's running it, what each worker is doing, elapsed time, token burn — in real time, plus a versioned library of what past runs produced.
 
 ## How it works
 
@@ -24,32 +24,41 @@ manifest.json ──▶ ringer.py ──▶ N parallel workers (codex exec, each
               ~/.ringer/runs/    eval log (JSONL or Postgres)
                       │
                       ▼
-                  Ringside HUD (live, all swarms, all identities)
+              Ringside, in the browser (live, all swarms, all identities)
 ```
 
 ## Quickstart
 
-1. Get the repo:
+Ringer runs on macOS and Linux (Windows via WSL) and needs Python 3.11+.
+
+1. Install a worker CLI and sign in (Codex is the built-in default engine):
+
+```bash
+npm install -g @openai/codex   # or: brew install --cask codex
+codex login                    # sign in with your ChatGPT plan
+```
+
+2. Get the repo:
 
 ```bash
 git clone https://github.com/NateBJones-Projects/ringer && cd ringer
-cp config.sample.toml ~/.config/ringer/config.toml   # optional — sane defaults without it
+mkdir -p ~/.config/ringer && cp config.sample.toml ~/.config/ringer/config.toml   # optional — sane defaults without it
 ```
 
-2. Teach your agent to route work through Ringer:
+3. Teach your agent to route work through Ringer:
 
 ```bash
 # optional but recommended: teach your agent to route work through ringer
 ./ringer.py install-agent
 ```
 
-3. Run the demo:
+4. Run the demo:
 
 ```bash
 ./ringer.py demo                                      # 3 real workers, verified end to end
 ```
 
-The demo spawns three Codex workers in parallel, verifies each artifact by executing it, and prints a verdict table. If you have the [Codex CLI](https://github.com/openai/codex) installed and authenticated, that's the whole setup.
+The demo spawns three Codex workers in parallel, verifies each artifact by executing it, and prints a verdict table — and Ringside, the live dashboard, opens in your browser on its own. If all three say PASS, that's the whole setup.
 
 Run your own batch:
 
@@ -96,6 +105,8 @@ Each task gets its own directory, its own worker, its own log, and its own verdi
 | `worktrees` (run-level) | Give each task an isolated git worktree of `repo` so parallel workers can't collide |
 
 > **Worktree footgun:** on PASS the task's worktree is removed — including anything written inside it. In worktrees mode, worker logs live outside task worktrees in `workdir/logs/`; have workers write deliverables outside the worktree too, or have your `check` copy artifacts out before it exits 0.
+
+Not sure what your tasks even are yet? [`docs/interview-prompt.md`](docs/interview-prompt.md) is a prompt you paste into any chatbot; it interviews you about the job and hands back a brief your orchestrating agent can turn into a manifest. Ready-made skeletons for the patterns that work live in [`templates/`](templates/).
 
 ## Lint
 
@@ -146,22 +157,41 @@ Unless a model ships its own first-class harness (Codex does), OpenCode is the h
 
 OpenCode ships no OS sandbox, so the engine's `bin` points at an absolute path to `engines/opencode-sandboxed.sh` (ringer does not resolve engine bins relative to the repo): a macOS Seatbelt wrapper that leaves network and reads open but confines writes to the task dir, a per-run scratch dir (wired as the agent's `TMPDIR`/`XDG_CACHE_HOME`), and OpenCode's own state/config dirs. Its `--dangerously-skip-permissions` flag only silences OpenCode's interactive prompts; Seatbelt is the actual containment. Task paths reach the profile as `sandbox-exec -D` parameters rather than string interpolation, so a task dir with quotes or parens can't inject sandbox rules. `--no-sandbox` is wired as the engine's `full_access_args`, so ringer's `allow_full_access` gate still governs escapes. Non-macOS installs need their own sandbox (or full-access mode).
 
+Setting it up takes about five minutes:
+
+```bash
+# 1) Install the OpenCode CLI (pick one)
+curl -fsSL https://opencode.ai/install | bash
+# or: npm install -g opencode-ai
+# or: brew install anomalyco/tap/opencode
+
+# 2) Connect OpenRouter — create a key at https://openrouter.ai/settings/keys
+opencode auth login   # select OpenRouter, paste the key
+
+# 3) In ~/.config/ringer/config.toml, uncomment [engines.opencode] and set
+#    bin to the ABSOLUTE path of engines/opencode-sandboxed.sh in this clone.
+#    (Linux/WSL: the wrapper is macOS-only — set bin to the opencode binary
+#    itself; there is no OS write-confinement then, so keep manifests scoped.)
+```
+
 Route with per-task `"engine": "opencode"`, pick the model with per-task `"model": "openrouter/<any-model>"`, and set reasoning effort via `engine_args`: `["--variant", "low|high|max"]`. A sensible split: mechanical or tightly-specced tasks on the cheap lane, gnarly ones on your frontier engine — the executed check catches shortfalls either way, and `swarm_runs` rows tell you whether the cheap lane's pass rate holds.
 
 ## Ringside — mission control
 
-![Ringside showing three live swarms under three identities](docs/ringside.png)
+![Ringside in the browser: a run's live results page with per-worker status and verification](docs/ringside.png)
 
-A native HUD (Tauri — one codebase for macOS, Windows, Linux) that floats above your work: one section per live swarm with a color-coded identity badge, per-task status chips, elapsed clocks, token burn, and a distinct state for swarms whose orchestrator *died* versus finished — the failure mode every dashboard forgets.
-
-Multiple swarms at once is the designed-for case. Run three batches under three identities and Ringside shows all three, color-separated, live.
+Ringside is a local web page — no install, no account, nothing leaves your machine — that every run opens automatically:
 
 ```bash
-cd hud
-cargo tauri build     # needs Rust + the Tauri CLI (cargo install tauri-cli)
+./ringer.py run manifest.json   # starts Ringside and opens the tab for you
+./ringer.py hud                 # or open it any time → http://127.0.0.1:8700
 ```
 
-The bundle lands in `hud/target/release/bundle/`. Ringer auto-opens Ringside when installed; `--browser` falls back to the localhost dashboard, and `--no-dashboard` runs headless.
+The top of the page is the run's live results document: what the job is, a progress bar of rounds, and "The work" — every deliverable each worker filed, with a plain-English line saying what the check proved and the raw check output one click away. Below it, the agents: expand a worker to see the exact brief it was handed, which engine and model are typing, and its live work stream. Past runs stay in a versioned library, and a swarm whose orchestrator *died* without finishing gets its own unmissable state — the failure mode every dashboard forgets.
+
+Multiple swarms at once is the designed-for case: run three batches under three identities and Ringside shows all three, live. `--browser` opens a simpler per-run fallback dashboard, and `--no-dashboard` runs headless.
+
+A native desktop build (Tauri, under `hud/`) exists as a v0.1.1 prototype; the web dashboard is currently ahead of it — start there.
 
 ## The eval loop
 

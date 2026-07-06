@@ -19,6 +19,7 @@ from ringer import (  # noqa: E402
     TaskSpec,
     build_worker_command,
     load_engines,
+    preflight_engine_bins,
     validate_manifest_engines,
 )
 
@@ -166,6 +167,41 @@ class ModelValidationTests(unittest.TestCase):
             self.manifest(self.base_task(engine="opencode", model="openrouter/x")),
             config,
         )
+
+    def test_preflight_catches_missing_engine_binary(self) -> None:
+        broken = EngineConfig(
+            name="codex",
+            bin="/nonexistent/path/to/codex",
+            args_template=("exec", "{spec}"),
+            full_access_args=(),
+            sandbox_args=(),
+            token_regex=None,
+        )
+        config = self.config({"codex": broken})
+        manifest = self.manifest(self.base_task(engine="codex"))
+        with self.assertRaisesRegex(ValueError, "binary not found.*npm install -g @openai/codex"):
+            preflight_engine_bins(manifest, config)
+
+    def test_preflight_accepts_absolute_and_path_resolved_binaries(self) -> None:
+        absolute = EngineConfig(
+            name="worker",
+            bin=sys.executable,
+            args_template=("{spec}",),
+            full_access_args=(),
+            sandbox_args=(),
+            token_regex=None,
+        )
+        bare = EngineConfig(
+            name="shellworker",
+            bin="sh",
+            args_template=("{spec}",),
+            full_access_args=(),
+            sandbox_args=(),
+            token_regex=None,
+        )
+        config = self.config({"worker": absolute, "shellworker": bare})
+        preflight_engine_bins(self.manifest(self.base_task(engine="worker")), config)
+        preflight_engine_bins(self.manifest(self.base_task(engine="shellworker")), config)
 
 
 if __name__ == "__main__":
