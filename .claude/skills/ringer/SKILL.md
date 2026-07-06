@@ -34,10 +34,13 @@ description: >-
    exception has become the workflow and nothing was verified or visible.
    The one-shot exception is ONE file, a few lines, ONCE. The second pass on
    the same problem is a loop, and loops are manifests.
-4. **Runs are watched, not hidden.** Never pass `--no-dashboard`: Ringside
-   is the product surface and the human's window into the swarm. Suppressing
-   it turns delegation into invisible work — the exact failure Ringer
-   exists to prevent. Only suppress when the user explicitly asks.
+4. **Runs are watched, not hidden — and the screen comes up FIRST.** The
+   moment this skill loads for real work, before you write a single spec,
+   put Ringside on the human's screen: `./ringer.py hud` (safe to run
+   anytime — if one is already up it just prints the port; runs also
+   auto-start it). The human should be watching the empty arena while you
+   plan the fight, not waiting in the dark. Never pass `--no-dashboard`
+   except in automated tests or when the user explicitly asks.
 
 Ringer runs manifest tasks in parallel across cheap CLI workers (Codex,
 OpenCode/GLM, others via config) and verifies every task by **executing a

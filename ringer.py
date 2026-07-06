@@ -26,6 +26,7 @@ import threading
 import time
 import tomllib
 import urllib.parse
+import urllib.request
 import webbrowser
 from dataclasses import dataclass, field, replace as dataclass_replace
 from datetime import datetime, timezone
@@ -3307,18 +3308,11 @@ class Dashboard:
         self.thread = threading.Thread(target=self.httpd.serve_forever, name="ringer-dashboard", daemon=True)
         self.thread.start()
         url = f"http://localhost:{self.port}"
-        if self.open_viewer:
-            try:
-                if not self.force_browser and self.hud_app_path is not None and self.hud_app_path.exists():
-                    subprocess.Popen(
-                        ["open", "-a", str(self.hud_app_path)],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                else:
-                    subprocess.Popen(["open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
-                pass
+        # Browser-first: the persistent hud (ensure_hud_running, called from the
+        # run path) is what the human watches. Only --browser opens this
+        # per-run page directly; the parked Tauri app is never auto-launched.
+        if self.open_viewer and self.force_browser:
+            open_in_browser(url)
         # flush: under a pipe this line is block-buffered and only appears at
         # process exit, making live runs look dashboard-less (MBP field report).
         print(f"Dashboard: {url}", flush=True)
@@ -4674,6 +4668,55 @@ async def run_manifest(
         unregister_active_run(runner.run_id)
 
 
+def hud_is_alive(port: int) -> bool:
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/runs", timeout=0.4) as response:
+            return response.status == 200
+    except Exception:
+        return False
+
+
+def open_in_browser(url: str) -> None:
+    # `open` is the reliable path on macOS; webbrowser can silently no-op
+    # depending on how the session was launched (observed during demo prep).
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            webbrowser.open(url)
+    except Exception:
+        pass
+
+
+def ensure_hud_running(config: AppConfig, *, open_browser: bool) -> None:
+    """Make sure the persistent Ringside page is up before a run starts.
+
+    The human should never have to remember a second command to watch the
+    fight: if no hud answers on the configured port, spawn one detached.
+    """
+    port = config.hud_port
+    url = f"http://127.0.0.1:{port}"
+    if not hud_is_alive(port):
+        log_path = config.state_dir / "hud.log"
+        with contextlib.suppress(Exception):
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("ab") as log_file:
+                subprocess.Popen(
+                    [sys.executable, str(Path(__file__).resolve()), "hud", "--no-open", "--port", str(port)],
+                    stdout=log_file,
+                    stderr=log_file,
+                    stdin=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+        for _ in range(20):
+            if hud_is_alive(port):
+                break
+            time.sleep(0.15)
+    if open_browser and hud_is_alive(port):
+        open_in_browser(url)
+    print(f"Ringside: {url}", flush=True)
+
+
 def run_persistent_hud(config: AppConfig, *, port: int | None, open_viewer: bool) -> int:
     server = PersistentHudServer(
         config.state_dir,
@@ -4800,6 +4843,8 @@ def main(argv: list[str] | None = None) -> int:
                 force_browser=args.browser,
             )
             return 0
+        if dashboard_enabled and not args.browser:
+            ensure_hud_running(config, open_browser=True)
         return asyncio.run(
             run_manifest(
                 manifest,
