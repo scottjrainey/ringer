@@ -6,6 +6,10 @@ hud-v2-build.log
 build/
 target/
 runs.jsonl
+
+# scratch/probe manifests dropped at repo root (e.g. bakeoffs, lane proofs)
+/*.json
+
 hud/dist/
 hud/gen/
 hud/icons/icon.iconset/
