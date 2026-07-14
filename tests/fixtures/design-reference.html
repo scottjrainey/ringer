@@ -1,0 +1,128 @@
+<!doctype html>
+<!--
+  Design-token reference for tests/test_design_reference.py.
+
+  This is a committed snapshot of the color tokens from the approved design
+  bake (see commit c1aafbc, "Orchestrator kit, self-enforcement, live
+  artifacts, and browser-first Ringside" — the artifact pages there were
+  built against a design-bake mockup that lived only in a scratch directory
+  on the author's machine and was never checked in). test_design_reference.py
+  originally pointed at that scratch path directly, so the test only ever
+  passed on that one machine. This file replaces the scratch dependency with
+  a portable, reviewable fixture: it must be updated in the same PR as any
+  intentional change to ARTIFACT_BASE_CSS's color tokens in ringer.py.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ringer design reference — color tokens</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #0b0e14;
+    --surface: #141a26;
+    --ink: #e9eef7;
+    --muted: #8fa0b6;
+    --hairline: rgba(143, 160, 182, .22);
+    --accent: #35d0ff;
+    --pass: #45d17e;
+    --fail: #ff5f6b;
+    --waiting: #6f7c92;
+    --quote-bg: rgba(255, 95, 107, .08);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --ground: #f2f5f9;
+      --surface: #ffffff;
+      --ink: #17202e;
+      --muted: #5a6a7e;
+      --hairline: rgba(90, 106, 126, .28);
+      --accent: #007fb0;
+      --pass: #178a4c;
+      --fail: #cc3340;
+      --waiting: #7d8ba0;
+      --quote-bg: rgba(204, 51, 64, .07);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #0b0e14; --surface: #141a26; --ink: #e9eef7; --muted: #8fa0b6;
+    --hairline: rgba(143,160,182,.22); --accent: #35d0ff; --pass: #45d17e;
+    --fail: #ff5f6b; --waiting: #6f7c92; --quote-bg: rgba(255,95,107,.08);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --ground: #f2f5f9; --surface: #ffffff; --ink: #17202e; --muted: #5a6a7e;
+    --hairline: rgba(90,106,126,.28); --accent: #007fb0; --pass: #178a4c;
+    --fail: #cc3340; --waiting: #7d8ba0; --quote-bg: rgba(204,51,64,.07);
+  }
+
+  /* Everything below is presentation for humans opening this file directly —
+     the test only reads the four blocks above via regex and never touches this. */
+  body {
+    margin: 0;
+    padding: 32px;
+    background: #0b0e14;
+    color: #e9eef7;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.note { color: #8fa0b6; font-size: 13px; max-width: 62ch; margin: 0 0 28px; line-height: 1.5; }
+  .theme-group { margin-bottom: 28px; }
+  .theme-group h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #8fa0b6; margin: 0 0 10px; }
+  .swatch-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .swatch {
+    width: 118px;
+    border: 1px solid rgba(143, 160, 182, .3);
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 11px;
+  }
+  .swatch .chip { height: 48px; }
+  .swatch .label { padding: 6px 8px; background: #141a26; color: #e9eef7; }
+  .swatch .label b { display: block; font-family: ui-monospace, Menlo, monospace; }
+  .swatch .label span { color: #8fa0b6; font-family: ui-monospace, Menlo, monospace; }
+</style>
+</head>
+<body>
+  <h1>Ringer artifact color tokens</h1>
+  <p class="note">
+    Reference snapshot for <code>ARTIFACT_BASE_CSS</code> in <code>ringer.py</code>.
+    <code>tests/test_design_reference.py</code> asserts the shipped CSS matches these
+    values exactly — update both together when the palette intentionally changes.
+  </p>
+
+  <div class="theme-group">
+    <h2>Dark (default)</h2>
+    <div class="swatch-row">
+      <div class="swatch"><div class="chip" style="background:#0b0e14"></div><div class="label"><b>--ground</b><span>#0b0e14</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#141a26"></div><div class="label"><b>--surface</b><span>#141a26</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#e9eef7"></div><div class="label"><b>--ink</b><span>#e9eef7</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#8fa0b6"></div><div class="label"><b>--muted</b><span>#8fa0b6</span></div></div>
+      <div class="swatch"><div class="chip" style="background:rgba(143,160,182,.22)"></div><div class="label"><b>--hairline</b><span>22% alpha</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#35d0ff"></div><div class="label"><b>--accent</b><span>#35d0ff</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#45d17e"></div><div class="label"><b>--pass</b><span>#45d17e</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#ff5f6b"></div><div class="label"><b>--fail</b><span>#ff5f6b</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#6f7c92"></div><div class="label"><b>--waiting</b><span>#6f7c92</span></div></div>
+      <div class="swatch"><div class="chip" style="background:rgba(255,95,107,.08)"></div><div class="label"><b>--quote-bg</b><span>8% alpha</span></div></div>
+    </div>
+  </div>
+
+  <div class="theme-group">
+    <h2>Light</h2>
+    <div class="swatch-row">
+      <div class="swatch"><div class="chip" style="background:#f2f5f9"></div><div class="label"><b>--ground</b><span>#f2f5f9</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#ffffff"></div><div class="label"><b>--surface</b><span>#ffffff</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#17202e"></div><div class="label"><b>--ink</b><span>#17202e</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#5a6a7e"></div><div class="label"><b>--muted</b><span>#5a6a7e</span></div></div>
+      <div class="swatch"><div class="chip" style="background:rgba(90,106,126,.28)"></div><div class="label"><b>--hairline</b><span>28% alpha</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#007fb0"></div><div class="label"><b>--accent</b><span>#007fb0</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#178a4c"></div><div class="label"><b>--pass</b><span>#178a4c</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#cc3340"></div><div class="label"><b>--fail</b><span>#cc3340</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#7d8ba0"></div><div class="label"><b>--waiting</b><span>#7d8ba0</span></div></div>
+      <div class="swatch"><div class="chip" style="background:rgba(204,51,64,.07)"></div><div class="label"><b>--quote-bg</b><span>7% alpha</span></div></div>
+    </div>
+  </div>
+</body>
+</html>

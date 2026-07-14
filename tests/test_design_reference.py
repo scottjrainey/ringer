@@ -12,10 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 from ringer import ARTIFACT_BASE_CSS, ArtifactRenderer, render_final_report_html, render_status_html  # noqa: E402
 
-REFERENCE = Path(
-    "/private/tmp/claude-501/-Users-jonathanedwards-WORKSPACE-20-CLIENTS-NATE-10-ACTIVE-SYSTEMS-ringer-system/"
-    "d4e72b45-c6bd-4928-aaf0-4e3552eb8f04/scratchpad/design-bake/design-reference.html"
-)
+REFERENCE = Path(__file__).resolve().parent / "fixtures" / "design-reference.html"
 
 
 def css_block(css: str, selector: str) -> str:
@@ -64,6 +61,11 @@ class DesignReferenceTests(unittest.TestCase):
         self.assertEqual(expected_light_override, token_values(css_block(ARTIFACT_BASE_CSS, ':root[data-theme="light"]')))
 
     def test_live_page_uses_reference_structure(self) -> None:
+        # Since commit 8cfcab7 ("one-story artifacts"), the live page's "The
+        # work" section only lists finished (pass/fail) deliverables —
+        # in-progress work belongs to Ringside's agent accordion instead. The
+        # rounds bar is where every task's state is visible on this page,
+        # including tasks still running, retrying, or waiting.
         render_status_html(
             self.state([self.task("contract-a", "running", attempts=1)]),
             renderer=self.renderer,
@@ -83,11 +85,21 @@ class DesignReferenceTests(unittest.TestCase):
         self.assertIn('<header class="corner">', html)
         self.assertIn('class="live-dot is-live"', html)
         self.assertIn('<div class="rounds"', html)
+        self.assertIn('<span class="retry" aria-label="contract-a: sent back — redoing"></span>', html)
+        self.assertIn('<span class="working" aria-label="contract-b: working"></span>', html)
+        self.assertIn('<span class="pass" aria-label="contract-c: finished &amp; checked"></span>', html)
+        self.assertIn('<span aria-label="contract-d: waiting"></span>', html)
+
         self.assertIn('<section class="work"', html)
-        self.assertIn('<div class="work-group">', html)
-        self.assertIn('<div class="worker">', html)
-        self.assertIn('<span class="state retry">sent back — redoing</span>', html)
-        self.assertIn('<span class="activity" title="Reading section 4">Reading section 4</span>', html)
+        self.assertEqual(1, html.count('<div class="work-group">'))
+        self.assertEqual(1, html.count('<div class="worker">'))
+        self.assertIn('<span class="name" title="contract-c">contract-c</span>', html)
+        self.assertIn('<span class="state pass">finished &amp; checked</span>', html)
+        # The still-running/retrying/queued tasks get no worker card on the
+        # live page — only the rounds-bar entries above represent them.
+        self.assertNotIn('<span class="state retry">', html)
+        self.assertNotIn('<span class="state working">', html)
+        self.assertNotIn('<span class="activity"', html)
 
     def test_final_page_uses_static_dot(self) -> None:
         html = render_final_report_html(
@@ -98,6 +110,24 @@ class DesignReferenceTests(unittest.TestCase):
         self.assertIn('<span class="live-dot pass" aria-hidden="true"></span>', html)
         self.assertNotIn('class="live-dot is-live"', html)
         self.assertNotIn('http-equiv="refresh"', html)
+
+    def test_final_page_shows_unfinished_worker_when_run_died_mid_task(self) -> None:
+        # Unlike the live page, the final report has no finished_only filter:
+        # a run whose orchestrator died mid-task still needs to show that
+        # worker's last-known state and activity (README's "unmissable
+        # state" for a swarm that died without finishing).
+        html = render_final_report_html(
+            self.state(
+                [self.task("contract-a", "retrying", attempts=2, activity="Reading section 4")],
+                finished=True,
+            ),
+            renderer=self.renderer,
+        )
+
+        self.assertIn('<div class="work-group">', html)
+        self.assertIn('<div class="worker">', html)
+        self.assertIn('<span class="state retry">sent back — redoing</span>', html)
+        self.assertIn('<span class="activity" title="Reading section 4">Reading section 4</span>', html)
 
     def task(
         self,
