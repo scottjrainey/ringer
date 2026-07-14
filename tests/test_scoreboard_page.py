@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import datetime as real_datetime
 from unittest import mock
 from pathlib import Path
 
@@ -237,9 +238,20 @@ class ScoreboardPageTests(unittest.TestCase):
         )
 
     def render_to(self, path: Path) -> str:
+        # The scoreboard's "Generated ..." header stamps datetime.now() at
+        # render time (run_models_command has no seam to inject a fixed
+        # timestamp) — freeze it so the header text is reproducible instead
+        # of only matching on the day this test was written. wraps=
+        # real_datetime keeps unrelated datetime calls (e.g. strptime in
+        # humanized_log_date) working normally. now.return_value is a real,
+        # naive datetime — astimezone() on a naive value only attaches the
+        # system's local tzinfo, it doesn't shift the date/time, so the
+        # frozen calendar date holds regardless of the machine's timezone.
         out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            self.assertEqual(0, run_models_command(self.config, self.args(html=str(path))))
+        with mock.patch.object(ringer, "datetime", wraps=real_datetime) as mock_datetime:
+            mock_datetime.now.return_value = real_datetime(2026, 7, 6, 12, 0, 0)
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(0, run_models_command(self.config, self.args(html=str(path))))
         self.assertEqual(str(path.resolve()) + "\n", out.getvalue())
         return path.read_text(encoding="utf-8")
 
