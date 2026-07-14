@@ -142,7 +142,7 @@ For CI and evals, `config.sample.toml` includes `[engines.mock]` so the enforcem
 
 ![Identical workers, each under its own light](docs/engines.png)
 
-Ringer ships with three worker lanes: **Codex CLI** is the built-in default, and `config.sample.toml` carries verified engine blocks for **Grok Build CLI** (works as-is once you `grok login`) and **OpenCode + OpenRouter** (one edit: point `bin` at the sandbox wrapper in your clone). Anything else with a headless CLI is a config block away:
+Ringer ships with several worker lanes: **Codex CLI** is the built-in default, and `config.sample.toml` carries verified engine blocks for **Grok Build CLI** (works as-is once you `grok login`), **OpenCode + OpenRouter**, and **Pi** in both an OpenRouter and a ChatGPT-OAuth flavor (one edit each: point `bin` at the sandbox wrapper in your clone). Anything else with a headless CLI is a config block away:
 
 ```toml
 [engines.mymodel]
@@ -193,6 +193,29 @@ grok login
 ```
 
 Route with per-task `"engine": "grok"` and pick the model with `"model": "grok-build"` or `"model": "grok-composer-2.5-fast"` (the shipped default — the speed pick). Grok brings its own OS sandbox on macOS (profile `workspace`: read everywhere, writes confined to the task dir, temp, and `~/.grok`), and its JSON output exposes no token counts — plan-billed workers report cost as included in plan.
+
+### Two more lanes from one CLI: Pi
+
+[Pi](https://github.com/earendil-works/pi-mono) (`@earendil-works/pi-coding-agent`) is a second universal harness like OpenCode, and `config.sample.toml` carries two ready-to-uncomment engine blocks for it that share one binary but route through different providers:
+
+- **`engines.pi-openrouter`** — the same pay-per-token OpenRouter lane as `engines.opencode`, through pi's own harness instead. Its `--provider openrouter` takes the bare OpenRouter catalog slug (no `openrouter/` prefix), and the shipped default is the same GLM-5.2 cheap-intelligence pick.
+- **`engines.pi-openai`** — a flat-rate lane through the same gpt-5.x lineup as `engines.codex`, but on pi's harness with a ChatGPT Plus/Pro OAuth login instead of Codex CLI.
+
+```bash
+# 1) Install
+npm install -g @earendil-works/pi-coding-agent
+
+# 2) Sign in to whichever lane(s) you want — run `pi` interactively, then /login:
+#    - "OpenRouter": paste a key from https://openrouter.ai/settings/keys
+#    - "ChatGPT Plus/Pro (Codex)": OAuth, requires an active subscription
+#    Tokens land in ~/.pi/agent/auth.json and OAuth ones auto-refresh after that.
+
+# 3) In ~/.config/ringer/config.toml, uncomment [engines.pi-openrouter] and/or
+#    [engines.pi-openai], and set bin to the ABSOLUTE path of
+#    engines/pi-sandboxed.sh in this clone.
+```
+
+Pi has no OS sandbox of its own, so both blocks point `bin` at `engines/pi-sandboxed.sh`: a macOS Seatbelt wrapper built the same way as OpenCode's — network and reads open, writes confined to the task dir, a per-run scratch dir (`TMPDIR`), and pi's own config dir `~/.pi/agent` (which, unlike OpenCode's three-way split, holds auth, sessions, and settings all in one place). `--no-sandbox` is wired as `full_access_args`, so `allow_full_access` still gates escapes; non-macOS installs need their own sandbox or full-access mode. Both blocks also pass `--no-session` (swarm workers are one-shot, nothing to resume) and enable pi's full built-in tool set (`read,bash,edit,write,grep,find,ls` — the last three are off by default in pi). Route with per-task `"engine": "pi-openrouter"` or `"engine": "pi-openai"`; set reasoning depth on the OpenAI lane with `engine_args`: `["--thinking", "low|medium|high|xhigh|max"]`.
 
 ## Ringside — mission control
 

@@ -160,6 +160,93 @@ model_report_regex = "(?m)^model:[ \\t]*([^ \\t\\r\\n]+)[ \\t]*\\r?$"
 # full_access_args = ["--no-sandbox"]
 # token_regex = '"tokens":\{"total":([0-9]+)'
 
+# Pi (@earendil-works/pi-coding-agent) — like OpenCode, one CLI that can run
+# behind any provider it supports. These two blocks route the SAME binary
+# through two different providers via `--provider`, so they're worth having
+# side by side: pi-openrouter for the cheap-intelligence, pay-per-token lane;
+# pi-openai for a flat-rate ChatGPT Plus/Pro OAuth lane. Install once:
+#   npm install -g @earendil-works/pi-coding-agent
+# Pi has no OS sandbox of its own (it "runs with the permissions of the user
+# account that starts it" — upstream docs/security.md) and its non-interactive
+# modes (-p, --mode json) never show a trust or approval prompt, so nothing
+# else stops a write outside the task dir. `bin` points at an absolute path to
+# engines/pi-sandboxed.sh (ringer does not resolve engine bins relative to the
+# repo): a macOS Seatbelt wrapper that leaves network and reads open but
+# confines writes to the task dir, a per-run scratch dir (wired as `TMPDIR`),
+# and pi's own config dir `~/.pi/agent` (auth, sessions, settings — all under
+# one directory for pi, unlike OpenCode's three-way split). `--no-sandbox` is
+# wired as the engine's full_access_args, so ringer's allow_full_access gate
+# still governs escapes. Non-macOS installs need their own sandbox (or
+# full-access mode). `--no-session` skips writing a session file per attempt
+# — swarm workers are one-shot, so there is nothing to resume.
+# In the JSON event stream (docs: `pi --help`, "JSON Event Stream Mode"), each
+# assistant message's usage object carries a running "totalTokens" for that
+# turn and self-reports "model" before any text is generated; both regexes
+# below take advantage of that.
+
+# Pi + OpenRouter — any OpenRouter-served model behind pi's own harness, same
+# "one engine, any model" pattern as engines.opencode. Auth: run `pi`
+# interactively once and `/login` → OpenRouter (paste a key from
+# https://openrouter.ai/settings/keys), or set OPENROUTER_API_KEY. Unlike
+# OpenCode's `openrouter/<slug>` convention, pi's `--model` takes the bare
+# OpenRouter catalog slug (no prefix) — the shipped default below is the same
+# GLM-5.2 cheap-intelligence pick as engines.opencode.
+# Uncomment and set an absolute path for `bin` to enable.
+# [engines.pi-openrouter]
+# bin = "/absolute/path/to/ringer/engines/pi-sandboxed.sh"
+# model_default = "z-ai/glm-5.2"
+# args_template = [
+#   "{taskdir}",
+#   "{access_args}",
+#   "--provider",
+#   "openrouter",
+#   "--model",
+#   "{model}",
+#   "--mode",
+#   "json",
+#   "--no-session",
+#   "--tools",
+#   "read,bash,edit,write,grep,find,ls",
+#   "{engine_args}",
+#   "-p",
+#   "{spec}",
+# ]
+# sandbox_args = []
+# full_access_args = ["--no-sandbox"]
+# token_regex = '"totalTokens":([0-9]+)'
+# model_report_regex = '"model":"([^"]+)"'
+
+# Pi + OpenAI (ChatGPT Plus/Pro OAuth) — a flat-rate lane through the same
+# gpt-5.x lineup as engines.codex, run through pi's harness instead of Codex
+# CLI. Auth: run `pi` interactively once and `/login` → "ChatGPT Plus/Pro
+# (Codex)"; the token lands in ~/.pi/agent/auth.json and auto-refreshes after
+# that — no API key, no per-token bill against your plan. Per-task
+# engine_args can set reasoning depth, e.g. ["--thinking", "high"].
+# Uncomment and set an absolute path for `bin` to enable.
+# [engines.pi-openai]
+# bin = "/absolute/path/to/ringer/engines/pi-sandboxed.sh"
+# model_default = "gpt-5.5"
+# args_template = [
+#   "{taskdir}",
+#   "{access_args}",
+#   "--provider",
+#   "openai-codex",
+#   "--model",
+#   "{model}",
+#   "--mode",
+#   "json",
+#   "--no-session",
+#   "--tools",
+#   "read,bash,edit,write,grep,find,ls",
+#   "{engine_args}",
+#   "-p",
+#   "{spec}",
+# ]
+# sandbox_args = []
+# full_access_args = ["--no-sandbox"]
+# token_regex = '"totalTokens":([0-9]+)'
+# model_report_regex = '"model":"([^"]+)"'
+
 [artifact]
 # Zero-LLM, self-contained HTML artifacts rendered directly from state — no model calls, no
 # network. Three files per config, all pure stdlib templates:

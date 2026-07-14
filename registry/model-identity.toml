@@ -104,3 +104,77 @@ lab = "Meta"
 confidence = "verified"
 source = "manifest model field; OpenRouter slug meta-llama/llama-3.3-70b-instruct:free"
 last_verified = 2026-07-10
+
+[engines.pi-openrouter]
+harness = "Pi"
+access = "OpenRouter API"
+# model key = the manifest "model" slug. Unlike engines.opencode, pi's
+# --provider openrouter takes the BARE OpenRouter catalog slug (no
+# "openrouter/" prefix) — confirmed against pi-coding-agent v0.80.7 JSON
+# output, which self-reports the same bare slug in each message's "model"
+# field. Unlisted slugs retain their raw value and are marked unregistered
+# until verified here.
+
+[engines.pi-openrouter.models."z-ai/glm-5.2"]
+display = "GLM 5.2"
+lab = "Z.ai (Zhipu AI)"
+confidence = "verified"
+source = "manifest model field; OpenRouter slug z-ai/glm-5.2 (see engines.opencode entry); self-reported by pi-coding-agent v0.80.7 JSON stream"
+last_verified = 2026-07-14
+
+[engines.pi-openai]
+harness = "Pi"
+access = "OAuth plan"
+default_model_key = "gpt-5.5"
+# --provider openai-codex; requires a ChatGPT Plus/Pro subscription via `/login`.
+# Same underlying gpt-5.x lineup as engines.codex, confirmed via
+# `pi --list-models openai` on pi-coding-agent v0.80.7.
+
+[engines.pi-openai.models."gpt-5.3-codex-spark"]
+display = "GPT-5.3 Codex Spark"
+lab = "OpenAI"
+confidence = "verified"
+source = "https://developers.openai.com/codex/models"
+last_verified = 2026-07-14
+
+[engines.pi-openai.models."gpt-5.4"]
+display = "GPT-5.4"
+lab = "OpenAI"
+confidence = "verified"
+source = "https://developers.openai.com/codex/models"
+last_verified = 2026-07-14
+
+[engines.pi-openai.models."gpt-5.4-mini"]
+display = "GPT-5.4 Mini"
+lab = "OpenAI"
+confidence = "verified"
+source = "https://developers.openai.com/codex/models"
+last_verified = 2026-07-14
+
+[engines.pi-openai.models."gpt-5.5"]
+display = "GPT-5.5"
+lab = "OpenAI"
+confidence = "verified"
+source = "https://developers.openai.com/codex/models"
+last_verified = 2026-07-14
+
+[engines.pi-openai.models."gpt-5.6-sol"]
+display = "GPT-5.6 Sol"
+lab = "OpenAI"
+confidence = "verified"
+source = "https://developers.openai.com/codex/models"
+last_verified = 2026-07-14
+
+[engines.pi-openai.models."gpt-5.6-luna"]
+display = "GPT-5.6 Luna"
+lab = "OpenAI"
+confidence = "verified"
+source = "https://developers.openai.com/codex/models"
+last_verified = 2026-07-14
+
+[engines.pi-openai.models."gpt-5.6-terra"]
+display = "GPT-5.6 Terra"
+lab = "OpenAI"
+confidence = "verified"
+source = "https://developers.openai.com/codex/models"
+last_verified = 2026-07-14
