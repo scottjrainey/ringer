@@ -27,11 +27,13 @@ EXCLUDED_AUTHORS = {
     "jonathan edwards",
     "nate jones",
     "github",
+    "scott rainey",  # this fork's owner/maintainer, not a community PR author
 }
 EXCLUDED_AUTHOR_PREFIXES = ("claude",)
 EXCLUDED_HANDLES = {
     "justfinethanku",
     "natebjones-projects",
+    "scottjrainey",
 }
 
 MERGE_SUBJECT_RE = re.compile(r"^Merge pull request #\d+ from ([^/\s]+)/")

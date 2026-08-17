@@ -14,6 +14,29 @@ One problem: parallel agents lie. "Done" doesn't mean working. Ringer doesn't ta
 
 And because a swarm you can't see is a swarm you don't trust: **Ringside**, a local web page every run opens automatically, showing every live swarm on your machine — who's running it, what each worker is doing, elapsed time, token burn — in real time, plus a versioned library of what past runs produced.
 
+## This fork
+
+This is [scottjrainey](https://github.com/scottjrainey)'s fork of [NateBJones-Projects/ringer](https://github.com/NateBJones-Projects/ringer) (`upstream`). Its own commits are kept rebased on top of upstream, not merged, so this fork's history stays linear. To redo that rebase when the fork drifts again:
+
+```bash
+git fetch origin && git fetch upstream
+
+# how far the two have diverged (report both counts before touching anything)
+git rev-list --left-right --count upstream/main...origin/main
+
+git checkout -b rebase-tmp origin/main
+git rebase upstream/main
+# resolve any conflicts thoughtfully — a mechanical replay is fine to resolve
+# on your own judgment; if upstream and this fork's own commits both touched
+# the same thing in a way that isn't a clean mechanical replay, stop and
+# think it through rather than guessing
+
+# force-push only after you're sure — this rewrites main's history
+git push origin rebase-tmp:main --force-with-lease=main:<origin/main SHA you fetched above>
+```
+
+`--force-with-lease` (not a blind `--force`) fails safely if `origin/main` moved since your fetch. If the push is rejected with `refusing to allow an OAuth App to create or update workflow ... without workflow scope` (this happens whenever upstream has touched a `.github/workflows/*.yml` file and your git credential is an OAuth App token without `workflow` scope, e.g. a `gh`-issued token), push over SSH instead — a personal SSH key isn't OAuth-scoped and isn't subject to that restriction: `git push git@github.com:scottjrainey/ringer.git rebase-tmp:main --force-with-lease=...`.
+
 ## How it works
 
 ```
